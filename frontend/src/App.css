@@ -44,7 +44,7 @@ body {
 /* Header */
 .header {
   background: linear-gradient(135deg, rgba(0, 0, 0, 0.9), rgba(139, 26, 114, 0.8) 50%, rgba(0, 0, 0, 0.9));
-  color: #ffbf00;
+  color: #fff;
   padding: 0.7rem 0 0.5rem;
   text-align: left;
   padding-left: 2rem;;
@@ -1095,7 +1095,7 @@ body {
 .footer-app {
   width: 100%;
   background: linear-gradient(135deg, rgba(0, 0, 0, 0.9), rgba(139, 26, 114, 0.8) 50%, rgba(0, 0, 0, 0.9));
-  color: #ffbf00;
+  color: #fff;
   text-align: center;
   padding: 1.2rem 0 1.2rem 0;
   font-size: 1.1rem;
