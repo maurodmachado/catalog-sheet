@@ -94,7 +94,7 @@ body {
 .main {
   flex: 1;
   width: 100%;
-  padding: 3rem 2rem;
+  padding: 0.5rem 2rem;
   max-width: 1400px;
   margin: 0 auto;
   display: flex;
@@ -106,7 +106,6 @@ body {
   background: white;
   padding: 2rem;
   border-radius: 16px;
-  margin-bottom: 3rem;
   box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
   border: 1px solid #e2e8f0;
   display: flex;
@@ -502,7 +501,7 @@ body {
   }
   
   .main {
-    padding: 3rem 2rem;
+    padding: 0.5rem 2rem;
   }
 }
 
@@ -513,7 +512,7 @@ body {
   }
   
   .main {
-    padding: 3rem 2rem;
+    padding: 0.5rem 2rem;
   }
 }
 
@@ -524,7 +523,7 @@ body {
   }
   
   .main {
-    padding: 2.5rem 1.5rem;
+    padding: 0.5rem 1.5rem;
   }
 }
 
@@ -539,7 +538,7 @@ body {
   }
   
   .main {
-    padding: 2rem 1.5rem;
+    padding: 0.5rem 1.5rem;
   }
 }
 
@@ -557,7 +556,7 @@ body {
   }
   
   .main {
-    padding: 1.5rem 1rem;
+    padding: 0.5rem 1rem;
   }
   
   .productos-grid {
@@ -711,7 +710,7 @@ body {
   }
   
   .main {
-    padding: 1rem;
+    padding: 0.5rem;
   }
   
   .producto-imagen {
@@ -1090,7 +1089,7 @@ body {
 }
 
 .logo-header {
-  height: 10rem;
+  height: 6rem;
   width: auto;
   vertical-align: middle;
   display: inline-block;
