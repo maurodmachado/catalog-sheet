@@ -183,7 +183,6 @@ function App() {
       <div className="loading">
         <div className="spinner"></div>
         <p>Cargando productos...</p>
-        <small>Conectando con Google Sheets...</small>
       </div>
     )
   }
@@ -279,7 +278,7 @@ function App() {
           gap: '1rem', 
           alignItems: 'center', 
           justifyContent: 'center', 
-          margin: '2rem 0 1.5rem 0',
+          margin: '1rem 0 1.5rem 0',
           padding: '1.5rem',
           backgroundColor: '#f8f9fa',
           borderRadius: '12px',
