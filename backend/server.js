@@ -2,6 +2,8 @@ const express = require('express');
 const cors = require('cors');
 const { google } = require('googleapis');
 require('dotenv').config();
+const fs = require('fs');
+const path = require('path');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -9,6 +11,13 @@ const PORT = process.env.PORT || 3001;
 // Middleware
 app.use(cors());
 app.use(express.json());
+
+// Soporte para Render: escribir credentials.json desde variable de entorno
+if (process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON) {
+  const credPath = path.join(__dirname, 'credentials.json');
+  fs.writeFileSync(credPath, process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON);
+  process.env.GOOGLE_APPLICATION_CREDENTIALS = credPath;
+}
 
 // Configurar Google Sheets API
 const auth = new google.auth.GoogleAuth({
