@@ -18,8 +18,8 @@ function App() {
   const [busquedaNombre, setBusquedaNombre] = useState('');
   const [ordenPrecio, setOrdenPrecio] = useState('ninguno');
 
-  // URL de la API (cambia esto por tu URL de producción)
-  const API_URL = 'http://localhost:3001/api'
+  // URL de la API (usa variable de entorno en producción)
+  const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3001') + '/api'
 
   useEffect(() => {
     cargarProductos()
