@@ -241,7 +241,7 @@ function App() {
         </div>
       )}
       <header className="header">
-        <h1><img src={logo} alt="AlNorteGrow" className="logo-header" />AlNorteGrow</h1>
+        <h1><img src={logo} alt="AlNorteGrow" className="logo-header" />ALNORTEGROW</h1>
       </header>
 
       <main className="main">

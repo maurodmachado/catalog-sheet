@@ -71,11 +71,15 @@ body {
   margin-bottom: 0.1rem;
   position: relative;
   z-index: 1;
-  color: #ffbf00;
+  color: #ffffff;
   background: none;
   -webkit-background-clip: initial;
   -webkit-text-fill-color: initial;
   background-clip: initial;
+  font-family: 'Lemon Milk', 'Inter', Arial, sans-serif;
+  font-weight: bold;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 .header p {
@@ -1108,7 +1112,7 @@ body {
   box-shadow: 0 -2px 12px rgba(30,41,59,0.08);
 }
 .footer-app a {
-  color: #ffbf00;
+  color: #ffffff;
   text-decoration: none;
   transition: color 0.2s;
 }
@@ -1171,5 +1175,12 @@ body {
   width: auto;
   vertical-align: middle;
   display: inline-block;
+}
+
+@font-face {
+  font-family: 'Lemon Milk';
+  src: url('./assets/LEMONMILK-Bold.ttf') format('truetype');
+  font-weight: bold;
+  font-style: normal;
 }
 
