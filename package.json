@@ -1,0 +1,13 @@
+{
+  "name": "catalog-sheet",
+  "version": "1.0.0",
+  "description": "Catálogo de productos desde Google Sheets",
+  "scripts": {
+    "start": "cd backend && npm start",
+    "install": "cd backend && npm install",
+    "build": "cd backend && npm install"
+  },
+  "keywords": ["catalog", "google-sheets", "products"],
+  "author": "",
+  "license": "ISC"
+} 

@@ -46,7 +46,8 @@ body {
   background: linear-gradient(135deg, rgba(0, 0, 0, 0.9), rgba(139, 26, 114, 0.8) 50%, rgba(0, 0, 0, 0.9));
   color: #ffbf00;
   padding: 0.7rem 0 0.5rem;
-  text-align: center;
+  text-align: left;
+  padding-left: 2rem;;
   position: relative;
   overflow: hidden;
   width: 100%;
@@ -579,43 +580,77 @@ body {
   }
   
   .producto-info {
-    padding: 1.5rem;
+    padding: 0.7rem 0.3rem 0.3rem 0.3rem;
   }
   
   .producto-header {
-    height: auto;
-    min-height: 85px;
-    position: relative;
-    padding-bottom: 2.5rem;
-  }
-  
-  .producto-categoria {
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    font-size: 0.75rem;
-    padding: 0.3rem 0.8rem;
+    padding-bottom: 0.5rem;
+    min-height: 45px;
   }
   
   .producto-nombre {
-    min-height: 2.2rem;
-    max-height: 3.3rem;
+    font-size: 1.1rem;
+    min-height: unset;
+    max-height: unset;
+    margin-bottom: 0.05rem;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1.2;
+  }
+  
+  .producto-categoria {
+    margin-top: 0;
+    margin-bottom: 0.2rem;
   }
   
   .producto-imagen {
     height: 160px;
   }
   
+  .precio-container {
+    display: flex;
+    flex-direction: row !important;
+    align-items: center;
+    gap: 0.4rem;
+    margin-bottom: 0.3rem;
+  }
+  
   .producto-precio-oferta {
+    font-size: 1.1rem;
+    padding: 0.1rem 0.4rem;
+    margin-left: 0.2rem;
+  }
+  
+  .producto-precio-original {
     font-size: 1rem;
-    padding: 0.15rem 0.4rem;
+    margin-right: 0.3rem;
+  }
+  
+  .agregar-carrito-btn {
+    margin-top: 0.2rem;
+    padding: 0.4rem 0.7rem;
+    font-size: 0.95rem;
+    border-radius: 8px;
   }
   
   .oferta-badge {
-    top: 4px;
-    right: 4px;
-    padding: 0.1rem 0.25rem;
-    font-size: 0.45rem;
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0;
+    font-size: 2.3rem !important;
+    line-height: 1;
+    color: inherit;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
   
   .producto-nombre {
@@ -626,13 +661,33 @@ body {
     font-size: 1.5rem;
   }
   
-  .producto-precio-oferta {
-    font-size: 1.5rem;
-    padding: 0.4rem 0.8rem;
+  .producto-card {
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    border-radius: 12px;
+    border: 1px solid #f3f4f6;
+    padding: 0.5rem 0.5rem 0.7rem 0.5rem;
+    margin: 0;
   }
   
-  .producto-precio-original {
-    font-size: 1rem;
+  .whatsapp-float {
+    bottom: 3.5rem;
+  }
+  
+  .footer-app {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    height: 5.5rem;
+    padding: 0;
+  }
+  
+  .logo-footer {
+    display: block;
+    margin: 0 auto;
+    max-width: 60px;
+    height: auto;
   }
 }
 
@@ -660,14 +715,12 @@ body {
   }
   
   .producto-info {
-    padding: 1rem;
+    padding: 0.5rem 0.1rem 0.1rem 0.1rem;
   }
   
   .producto-header {
-    height: auto;
-    min-height: 70px;
-    position: relative;
-    padding-bottom: 2.2rem;
+    padding-bottom: 0.7rem;
+    min-height: 45px;
   }
   
   .producto-categoria {
@@ -688,27 +741,16 @@ body {
     font-size: 1.3rem;
   }
   
-  .producto-precio-oferta {
-    font-size: 0.9rem;
-    padding: 0.1rem 0.3rem;
-  }
-  
-  .producto-precio-original {
-    font-size: 0.9rem;
-  }
-  
   .precio-container {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 0.5rem;
+    gap: 0.2rem;
+    margin-bottom: 0.2rem;
   }
   
-  .filtros {
-    padding: 1rem;
-  }
-  
-  .loading, .error {
-    padding: 2rem 1rem;
+  .agregar-carrito-btn {
+    margin-top: 0.1rem;
+    padding: 0.3rem 0.5rem;
+    font-size: 0.9rem;
+    border-radius: 7px;
   }
   
   .oferta-badge {
@@ -1077,8 +1119,8 @@ body {
 
 .whatsapp-float {
   position: fixed;
-  right: 2.2rem;
-  bottom: 6.5rem;
+  right: 1rem;
+  bottom: 7rem;
   z-index: 9999;
   background: #25d366;
   color: #fff;
@@ -1111,8 +1153,8 @@ body {
     padding: 0.8rem 0;
   }
   .whatsapp-float {
-    right: 1rem;
-    bottom: 5.5rem;
+    right: 0.2rem;
+    bottom: 5.8rem;;
     width: 3.2rem;
     height: 3.2rem;
     font-size: 1.7rem;
