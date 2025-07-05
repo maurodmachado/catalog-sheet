@@ -191,11 +191,44 @@ railway up
 npm install -g vercel
 ```
 
-2. **Configurar variables de entorno** en el dashboard de Vercel
+2. **Configurar variables de entorno** en el dashboard de Vercel:
+   - `VITE_API_URL`: `https://catalog-sheet-backend.onrender.com`
+
 3. **Desplegar**:
 ```bash
 vercel --prod
 ```
+
+**⚠️ IMPORTANTE para Vercel**: 
+- Ve a tu proyecto en el dashboard de Vercel
+- En la sección "Settings" → "Environment Variables"
+- Agrega: `VITE_API_URL` = `https://catalog-sheet-backend.onrender.com`
+- Selecciona "Production" y "Preview"
+- Haz redeploy del proyecto
+
+**🔧 Solución para error 404 en /admin**:
+Si ves un error 404 al acceder a `/admin`, sigue estos pasos:
+
+1. **Verificar configuración**:
+   ```bash
+   ./fix-routing.sh
+   ```
+
+2. **Forzar redeploy**:
+   ```bash
+   ./redeploy-vercel.sh
+   ```
+
+3. **Configuración manual en Vercel**:
+   - Ve a https://vercel.com/dashboard
+   - Encuentra tu proyecto
+   - Ve a "Settings" → "Functions"
+   - Asegúrate de que `vercel.json` esté en la raíz del proyecto
+   - Haz clic en "Redeploy"
+
+4. **Verificar variables de entorno**:
+   - `VITE_API_URL` = `https://catalog-sheet-backend.onrender.com`
+   - Asegúrate de que estén configuradas para "Production" y "Preview"
 
 #### Heroku
 1. **Crear aplicación**:

@@ -38,13 +38,28 @@ app.use('/api/', limiter);
 app.use(compression());
 
 // CORS configurado para producción
+const allowedOrigins = [
+  'http://localhost:3000', // Desarrollo local
+  'https://alnortegrow-catalog.vercel.app', // Vercel
+  'https://catalog-sheet-frontend.onrender.com', // Render frontend
+  process.env.FRONTEND_URL // Variable de entorno personalizada
+].filter(Boolean); // Remover valores undefined
+
 app.use(cors({
-  origin: process.env.NODE_ENV === 'production' 
-    ? [process.env.FRONTEND_URL || 'https://tu-dominio.com'] 
-    : ['http://localhost:3000'],
+  origin: function (origin, callback) {
+    // Permitir requests sin origin (como aplicaciones móviles)
+    if (!origin) return callback(null, true);
+    
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      console.log('CORS bloqueado para origin:', origin);
+      callback(new Error('No permitido por CORS'));
+    }
+  },
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
 }));
 
 app.use(express.json({ limit: '10mb' }));
