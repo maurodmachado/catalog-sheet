@@ -1,143 +1,243 @@
-# 🛍️ Catálogo de Productos desde Google Sheets
+# 📋 Catálogo de Productos - Sistema de Ventas
 
-Una aplicación web moderna que muestra productos desde una hoja de Google Sheets con un diseño atractivo y funcional.
+Sistema completo de catálogo de productos y gestión de ventas integrado con Google Sheets como backend de datos.
 
-## ✨ Características
+## 🚀 Características
 
-- 📊 **Datos desde Google Sheets**: Los productos se cargan automáticamente desde tu hoja de Google
-- 🎨 **Diseño moderno**: Interfaz atractiva con gradientes y efectos hover
-- 📱 **Responsive**: Se adapta perfectamente a móviles y tablets
-- 🔍 **Filtros por categoría**: Filtra productos fácilmente
-- 💰 **Formato de precios**: Precios formateados en pesos argentinos
-- 🏷️ **Badges de oferta**: Destaca productos en oferta
-- ⚡ **Carga rápida**: Optimizado para velocidad
+### Frontend (React + Vite)
+- **Catálogo de productos** con filtros por categoría
+- **Carrito de compras** con gestión de cantidades
+- **Sistema de ofertas** con cálculo automático de descuentos
+- **Diseño responsive** para móviles y desktop
+- **Interfaz intuitiva** con emojis y animaciones
 
-## 🚀 Configuración Rápida
+### Backend (Node.js + Express)
+- **API RESTful** completa
+- **Integración con Google Sheets** para datos
+- **Sistema de caja** con apertura/cierre
+- **Gestión de ventas** con múltiples métodos de pago
+- **Reportes y métricas** en tiempo real
+- **Autenticación de administradores**
 
-### 1. Preparar Google Sheets
-
-1. Crea una nueva hoja de Google Sheets
-2. Agrega estos encabezados en la primera fila:
-   ```
-   Nombre | Categoria | Precio | Oferta | Descripcion | Imagen
-   ```
-3. Llena algunas filas con datos de ejemplo
-4. Copia el ID de la hoja (está en la URL: `https://docs.google.com/spreadsheets/d/SPREADSHEET_ID/edit`)
-
-### 2. Configurar Google Cloud
-
-1. Ve a [Google Cloud Console](https://console.cloud.google.com/)
-2. Crea un proyecto nuevo
-3. Habilita la **Google Sheets API**
-4. Crea una cuenta de servicio y descarga el archivo JSON
-5. Comparte tu hoja con el email de la cuenta de servicio
-
-### 3. Configurar el Backend
-
-```bash
-cd backend
-```
-
-1. Copia tu archivo JSON de credenciales como `credentials.json`
-2. Copia `env.example` como `.env` y configura:
-   ```env
-   SPREADSHEET_ID=TU_SPREADSHEET_ID_AQUI
-   PORT=3001
-   ```
-
-3. Instala dependencias y ejecuta:
-   ```bash
-   npm install
-   npm run dev
-   ```
-
-### 4. Configurar el Frontend
-
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
-## 📁 Estructura del Proyecto
-
-```
-catalog-sheet/
-├── backend/
-│   ├── server.js          # Servidor Express
-│   ├── credentials.json   # Credenciales de Google (agregar manualmente)
-│   ├── .env              # Variables de entorno (crear desde env.example)
-│   └── package.json
-├── frontend/
-│   ├── src/
-│   │   ├── App.jsx       # Componente principal
-│   │   └── App.css       # Estilos
-│   └── package.json
-└── README.md
-```
-
-## 🔧 Configuración Detallada
-
-### Google Sheets Setup
-
-Tu hoja debe tener esta estructura:
-
-| Nombre | Categoria | Precio | Oferta | Descripcion | Imagen |
-|--------|-----------|--------|--------|-------------|--------|
-| iPhone 15 | Tecnología | 1500000 | 20% OFF | El último iPhone | https://ejemplo.com/iphone.jpg |
-| MacBook Pro | Tecnología | 2500000 | | Laptop profesional | https://ejemplo.com/macbook.jpg |
-
-### Variables de Entorno
-
-En `backend/.env`:
-```env
-SPREADSHEET_ID=1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms
-PORT=3001
-```
-
-## 🚀 Despliegue
-
-### Railway (Recomendado)
-
-1. Conecta tu repositorio a Railway
-2. Configura las variables de entorno en Railway
-3. Sube el archivo `credentials.json` como variable de entorno
-4. ¡Listo! Tu app estará disponible en internet
-
-### Vercel (Frontend)
-
-1. Conecta el frontend a Vercel
-2. Configura la URL de la API en las variables de entorno
-3. Despliega automáticamente
-
-## 📱 Uso
-
-1. Abre la aplicación en tu navegador
-2. Los productos se cargan automáticamente desde Google Sheets
-3. Usa el filtro de categorías para encontrar productos específicos
-4. Los productos en oferta se destacan con badges rojos
+### Panel de Administración
+- **Gestión de productos** (CRUD completo)
+- **Control de caja** y turnos
+- **Reportes detallados** con filtros
+- **Métricas de negocio** en tiempo real
+- **Gestión de empleados**
 
 ## 🛠️ Tecnologías
 
+- **Frontend**: React 19, Vite, CSS3
 - **Backend**: Node.js, Express, Google Sheets API
-- **Frontend**: React, Vite, CSS3
-- **Despliegue**: Railway, Vercel
+- **Base de Datos**: Google Sheets
+- **Testing**: Jest, Vitest, Testing Library
+- **Deployment**: Docker, Nginx
+- **CI/CD**: GitHub Actions
 
-## 📝 Notas
+## 📦 Instalación
 
-- Las imágenes deben ser URLs públicas
-- Los precios se formatean automáticamente en pesos argentinos
-- La aplicación es completamente responsive
-- Los datos se actualizan automáticamente al cambiar la hoja de Google
+### Prerrequisitos
+- Node.js 18+ 
+- npm 8+
+- Cuenta de Google Cloud con Sheets API habilitada
 
-## 🤝 Contribuir
+### Desarrollo Local
 
-1. Fork el proyecto
-2. Crea una rama para tu feature
-3. Commit tus cambios
-4. Push a la rama
-5. Abre un Pull Request
+1. **Clonar el repositorio**
+```bash
+git clone https://github.com/tu-usuario/catalog-sheet.git
+cd catalog-sheet
+```
 
-## 📄 Licencia
+2. **Instalar dependencias**
+```bash
+npm install
+```
 
-Este proyecto está bajo la Licencia MIT. 
+3. **Configurar variables de entorno**
+```bash
+cp env.example .env
+# Editar .env con tus credenciales de Google
+```
+
+4. **Ejecutar en desarrollo**
+```bash
+npm run dev
+```
+
+### Variables de Entorno Requeridas
+
+```env
+# Google Sheets API
+SPREADSHEET_ID=tu_spreadsheet_id_aqui
+GOOGLE_APPLICATION_CREDENTIALS_JSON={"type":"service_account",...}
+
+# Servidor
+NODE_ENV=development
+PORT=3001
+
+# Frontend
+VITE_API_URL=http://localhost:3001
+```
+
+## 🧪 Testing
+
+### Ejecutar Tests
+```bash
+# Todos los tests
+npm test
+
+# Tests del backend
+npm run test:backend
+
+# Tests del frontend
+npm run test:frontend
+
+# Tests con coverage
+npm run test:coverage
+```
+
+### Cobertura de Tests
+- **Backend**: 70%+ (líneas, funciones, branches)
+- **Frontend**: Componentes principales y utilidades
+- **E2E**: Flujos críticos de usuario
+
+## 🚀 Despliegue
+
+### Despliegue Automatizado
+
+Usa nuestro script de despliegue automatizado:
+
+```bash
+./deploy.sh
+```
+
+Este script te guiará a través de las opciones de despliegue disponibles.
+
+### Variables de Entorno Requeridas
+
+**⚠️ IMPORTANTE**: Configura estas variables en tu plataforma de despliegue:
+
+```env
+# Credenciales de administrador
+ADMIN_USER=tu_usuario_admin
+ADMIN_PASSWORD=tu_contraseña_segura
+
+# Google Sheets API
+SPREADSHEET_ID=tu_spreadsheet_id_aqui
+GOOGLE_APPLICATION_CREDENTIALS_JSON={"type":"service_account",...}
+
+# Servidor
+NODE_ENV=production
+PORT=3001
+
+# Frontend
+FRONTEND_URL=https://tu-dominio.com
+```
+
+### Docker (Recomendado)
+
+1. **Configurar variables de entorno**
+```bash
+cp backend/env.example backend/.env
+# Editar backend/.env con tus credenciales
+```
+
+2. **Ejecutar con Docker Compose**
+```bash
+docker-compose up -d
+```
+
+3. **Solo backend**
+```bash
+docker-compose up backend
+```
+
+### Plataformas de Despliegue
+
+#### Render
+1. **Conectar repositorio** en Render
+2. **Configurar variables de entorno**:
+   - `ADMIN_USER`
+   - `ADMIN_PASSWORD`
+   - `SPREADSHEET_ID`
+   - `GOOGLE_APPLICATION_CREDENTIALS_JSON`
+   - `FRONTEND_URL`
+3. **Build Command**: `npm run build:backend`
+4. **Start Command**: `cd backend && npm start`
+
+#### Railway
+1. **Instalar Railway CLI**:
+```bash
+npm install -g @railway/cli
+```
+
+2. **Conectar proyecto**:
+```bash
+railway login
+railway init
+```
+
+3. **Configurar variables de entorno** en el dashboard de Railway
+4. **Desplegar**:
+```bash
+railway up
+```
+
+#### Vercel
+1. **Instalar Vercel CLI**:
+```bash
+npm install -g vercel
+```
+
+2. **Configurar variables de entorno** en el dashboard de Vercel
+3. **Desplegar**:
+```bash
+vercel --prod
+```
+
+#### Heroku
+1. **Crear aplicación**:
+```bash
+heroku create catalog-sheet-app
+```
+
+2. **Configurar variables de entorno**:
+```bash
+heroku config:set NODE_ENV=production
+heroku config:set ADMIN_USER=tu_usuario
+heroku config:set ADMIN_PASSWORD=tu_contraseña
+heroku config:set SPREADSHEET_ID=tu_id
+heroku config:set GOOGLE_APPLICATION_CREDENTIALS_JSON=tu_json
+```
+
+3. **Desplegar**:
+```bash
+git push heroku main
+```
+
+### Configuración de Seguridad
+
+1. **Cambiar credenciales por defecto**:
+   - Edita `backend/.env` con credenciales seguras
+   - Nunca uses las credenciales por defecto en producción
+
+2. **Configurar CORS**:
+   - Ajusta `FRONTEND_URL` en las variables de entorno
+   - Para desarrollo: `http://localhost:3000`
+   - Para producción: `https://tu-dominio.com`
+
+3. **Google Sheets API**:
+   - Asegúrate de que las credenciales tengan permisos de lectura/escritura
+   - Comparte la hoja con la cuenta de servicio
+
+### Monitoreo y Logs
+
+- **Health Check**: `GET /api/health`
+- **Logs**: Revisa los logs de tu plataforma de despliegue
+- **Métricas**: El sistema incluye métricas automáticas en `/api/metricas`
+
+## 📊 Estructura del Proyecto
+
+```

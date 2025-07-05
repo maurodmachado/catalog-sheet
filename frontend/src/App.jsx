@@ -56,11 +56,32 @@ function App() {
     const coincideNombre = producto.nombre.toLowerCase().includes(busquedaNombre.toLowerCase());
     return coincideCategoria && coincideNombre;
   });
+
+  // Ordenar productos: primero los que tienen stock > 0, luego los sin stock, y dentro de los con stock, por categoría alfabética
+  productosFiltrados = [...productosFiltrados].sort((a, b) => {
+    const stockA = (a.stock === undefined || a.stock === '' || isNaN(Number(a.stock))) ? 1 : Number(a.stock);
+    const stockB = (b.stock === undefined || b.stock === '' || isNaN(Number(b.stock))) ? 1 : Number(b.stock);
+
+    // Si uno tiene stock y el otro no, el que tiene stock va primero
+    if (stockA > 0 && stockB <= 0) return -1;
+    if (stockB > 0 && stockA <= 0) return 1;
+
+    // Ambos tienen stock o ambos no tienen stock
+    // Si ambos tienen stock, ordenar por categoría alfabética
+    if (stockA > 0 && stockB > 0) {
+      if (a.categoria < b.categoria) return -1;
+      if (a.categoria > b.categoria) return 1;
+      return 0;
+    }
+    // Ambos sin stock, mantener el orden original
+    return 0;
+  });
+
   // Ordenar por precio si corresponde
   if (ordenPrecio === 'asc') {
-    productosFiltrados = [...productosFiltrados].sort((a, b) => (a.oferta ? calcularPrecioOferta(a.precio, a.oferta) : a.precio) - (b.oferta ? calcularPrecioOferta(b.precio, b.oferta) : b.precio));
+    productosFiltrados = [...productosFiltrados].sort((a, b) => (a.oferta && calcularPrecioOferta(a.precio, a.oferta) !== null ? calcularPrecioOferta(a.precio, a.oferta) : a.precio) - (b.oferta && calcularPrecioOferta(b.precio, b.oferta) !== null ? calcularPrecioOferta(b.precio, b.oferta) : b.precio));
   } else if (ordenPrecio === 'desc') {
-    productosFiltrados = [...productosFiltrados].sort((a, b) => (b.oferta ? calcularPrecioOferta(b.precio, b.oferta) : b.precio) - (a.oferta ? calcularPrecioOferta(a.precio, a.oferta) : a.precio));
+    productosFiltrados = [...productosFiltrados].sort((a, b) => (b.oferta && calcularPrecioOferta(b.precio, b.oferta) !== null ? calcularPrecioOferta(b.precio, b.oferta) : b.precio) - (a.oferta && calcularPrecioOferta(a.precio, a.oferta) !== null ? calcularPrecioOferta(a.precio, a.oferta) : a.precio));
   }
 
   const formatearPrecio = (precio) => {
@@ -162,14 +183,19 @@ function App() {
     )
   }
 
+  // Limpiar carrito
+  const limpiarCarrito = () => {
+    setCarrito([]);
+  };
+
   // Generar mensaje de WhatsApp
   const armarMensajeWhatsApp = () => {
     let mensaje = '¡Hola! Quiero hacer un pedido:%0A%0A'
     carrito.forEach((p, i) => {
-      mensaje += `${i + 1}. ${p.nombre} (${p.categoria}) x${p.cantidad} - $${p.oferta ? calcularPrecioOferta(p.precio, p.oferta) : p.precio}%0A`
+      mensaje += `${i + 1}. ${p.nombre} (${p.categoria}) x${p.cantidad} - $${p.oferta && calcularPrecioOferta(p.precio, p.oferta) !== null ? calcularPrecioOferta(p.precio, p.oferta) : p.precio}%0A`
     })
     const total = carrito.reduce(
-      (acc, p) => acc + (p.oferta ? calcularPrecioOferta(p.precio, p.oferta) : p.precio) * p.cantidad,
+      (acc, p) => acc + (p.oferta && calcularPrecioOferta(p.precio, p.oferta) !== null ? calcularPrecioOferta(p.precio, p.oferta) : p.precio) * p.cantidad,
       0
     )
     mensaje += `%0ATotal: $${total}`
@@ -177,6 +203,31 @@ function App() {
   }
 
   const linkWhatsApp = `https://api.whatsapp.com/send/?phone=5493835117722&text=${armarMensajeWhatsApp()}`
+
+  // Cerrar modal con Escape o volver atrás
+  useEffect(() => {
+    if (!productoDetalle) return;
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        setProductoDetalle(null);
+      }
+    };
+    const handlePopState = () => {
+      setProductoDetalle(null);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('popstate', handlePopState);
+    // Empujar un nuevo estado al historial para detectar el back en móviles
+    window.history.pushState({ modal: true }, '');
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('popstate', handlePopState);
+      // Al cerrar el modal, volver el historial atrás si es necesario
+      if (window.history.state && window.history.state.modal) {
+        window.history.back();
+      }
+    };
+  }, [productoDetalle]);
 
   if (loading) {
     return (
@@ -216,14 +267,14 @@ function App() {
                 )
               ) : (
                 <div className="placeholder-imagen">
-                  <span>📷 Sin imagen</span>
+                  <span>📦</span>
                 </div>
               )}
             </div>
             <h2>{productoDetalle.nombre}</h2>
             <p className="producto-categoria-modal">{obtenerIconoCategoria(productoDetalle.categoria)} {productoDetalle.categoria}</p>
             <div className="precio-container-modal">
-              {productoDetalle.oferta && calcularPrecioOferta(productoDetalle.precio, productoDetalle.oferta) ? (
+              {productoDetalle.oferta && calcularPrecioOferta(productoDetalle.precio, productoDetalle.oferta) !== null ? (
                 <>
                   <span className="producto-precio-original">{formatearPrecio(productoDetalle.precio)}</span>
                   <span className="producto-precio-oferta">{formatearPrecio(calcularPrecioOferta(productoDetalle.precio, productoDetalle.oferta))}</span>
@@ -237,7 +288,7 @@ function App() {
               ➕ Agregar al carrito
             </button>
           </div>
-        </div>
+      </div>
       )}
       <header className="header">
         <h1><img src={logo} alt="AlNorteGrow" className="logo-header" />ALNORTEGROW</h1>
@@ -249,25 +300,47 @@ function App() {
         </button>
         {mostrarCarrito && (
           <div className="carrito-modal">
-            <h2>🛒 Carrito</h2>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
+              <h2 style={{ margin: 0 }}>🛒 Carrito</h2>
+              {carrito.length > 0 && (
+                <button 
+                  onClick={limpiarCarrito}
+                  style={{
+                    backgroundColor: '#FFE6E6',
+                    border: 'none',
+                    fontSize: '1.2rem',
+                    cursor: 'pointer',
+                    padding: '0.3rem',
+                    borderRadius: '4px',
+                    color: '#ef4444',
+                    transition: 'background-color 0.2s'
+                  }}
+                  onMouseEnter={(e) => {e.target.style.backgroundColor = 'transparent'; e.target.style.border = "1px solid #FFE6E6"}}
+                  onMouseLeave={(e) => e.target.style.backgroundColor = '#FFE6E6'}
+                  title="Limpiar carrito"
+                >
+                  Vaciar 🛒
+                </button>
+              )}
+            </div>
             {carrito.length === 0 ? (
               <p>El carrito está vacío.</p>
             ) : (
-              <ul>
-                {carrito.map((p) => (
-                  <li key={p.id}>
-                    <span className="carrito-nombre"><strong>{p.nombre}</strong></span>
-                    <span className="carrito-precio">${p.oferta ? calcularPrecioOferta(p.precio, p.oferta) : p.precio}</span>
-                    <input type="number" min="1" value={p.cantidad} onChange={e => cambiarCantidad(p.id, parseInt(e.target.value))} />
-                    <button onClick={() => quitarDelCarrito(p.id)}>❌</button>
-                  </li>
-                ))}
-              </ul>
-            )}
-            {carrito.length > 0 && (
-              <a href={linkWhatsApp} target="_blank" rel="noopener noreferrer" className="finalizar-btn">
-                Finalizar pedido por WhatsApp
-              </a>
+              <>
+                <ul>
+                  {carrito.map((p) => (
+                    <li key={p.id}>
+                      <span className="carrito-nombre"><strong>{p.nombre}</strong></span>
+                      <span className="carrito-precio">${p.oferta && calcularPrecioOferta(p.precio, p.oferta) !== null ? calcularPrecioOferta(p.precio, p.oferta) : p.precio}</span>
+                      <input type="number" min="1" value={p.cantidad} onChange={e => cambiarCantidad(p.id, parseInt(e.target.value))} />
+                      <button onClick={() => quitarDelCarrito(p.id)}>❌</button>
+                    </li>
+                  ))}
+                </ul>
+                <a href={linkWhatsApp} target="_blank" rel="noopener noreferrer" className="finalizar-btn">
+                  Finalizar pedido por WhatsApp
+                </a>
+              </>
             )}
           </div>
         )}
@@ -381,7 +454,7 @@ function App() {
           ) : (
             productosFiltrados.map(producto => {
               const precioOferta = calcularPrecioOferta(producto.precio, producto.oferta)
-              const tieneOferta = producto.oferta && precioOferta
+              const tieneOferta = producto.oferta && precioOferta !== null
               
               return (
                 <div key={producto.id} className="producto-card" onClick={() => setProductoDetalle(producto)} style={{cursor:'pointer'}}>
@@ -394,6 +467,7 @@ function App() {
                           onError={(e) => {
                             e.target.src = 'https://via.placeholder.com/400x300/f8fafc/64748b?text=Sin+Imagen'
                           }}
+                          style={producto.stock !== undefined && producto.stock !== '' && !isNaN(Number(producto.stock)) && Number(producto.stock) <= 0 ? { filter: 'grayscale(1) brightness(0.85)' } : {}}
                         />
                       ) : (
                         <div className="placeholder-imagen">
@@ -402,7 +476,7 @@ function App() {
                       )
                     ) : (
                       <div className="placeholder-imagen">
-                        <span>📷 Sin imagen</span>
+                        <span>📦</span>
                       </div>
                     )}
                     {producto.oferta && (
@@ -422,22 +496,28 @@ function App() {
                     
                     <div className="producto-footer">
                       <div className="precio-container">
-                        {tieneOferta ? (
-                          <>
-                            <span className="producto-precio-original">
+                        {((producto.stock === undefined || producto.stock === '' || isNaN(Number(producto.stock)) || Number(producto.stock) > 0)) ? (
+                          tieneOferta ? (
+                            <>
+                              <span className="producto-precio-original">
+                                {formatearPrecio(producto.precio)}
+                              </span>
+                              <span className="producto-precio-oferta">
+                                {formatearPrecio(precioOferta)}
+                              </span>
+                            </>
+                          ) : (
+                            <span className="producto-precio">
                               {formatearPrecio(producto.precio)}
                             </span>
-                            <span className="producto-precio-oferta">
-                              {formatearPrecio(precioOferta)}
-                            </span>
-                          </>
+                          )
                         ) : (
-                          <span className="producto-precio">
-                            {formatearPrecio(producto.precio)}
-                          </span>
+                          <span className="producto-precio" style={{color:'#dc2626', fontWeight:800}}>🚫 Sin stock</span>
                         )}
                       </div>
-                      <button className="agregar-carrito-btn" onClick={e => { e.stopPropagation(); agregarAlCarrito(producto); }}>
+                      <button className="agregar-carrito-btn" onClick={e => { e.stopPropagation(); agregarAlCarrito(producto); }}
+                        disabled={producto.stock !== undefined && producto.stock !== '' && !isNaN(Number(producto.stock)) && Number(producto.stock) <= 0}
+                        style={producto.stock !== undefined && producto.stock !== '' && !isNaN(Number(producto.stock)) && Number(producto.stock) <= 0 ? {opacity:0.5, cursor:'not-allowed'} : {}}>
                         ➕ Agregar al carrito
                       </button>
                     </div>
@@ -453,8 +533,8 @@ function App() {
           <p>
             📊 Mostrando <strong>{productosFiltrados.length}</strong> de <strong>{productos.length}</strong> productos
             {categoriaSeleccionada !== 'todos' && ` en ${categoriaSeleccionada}`}
-          </p>
-        </div>
+        </p>
+      </div>
       </main>
       <footer className="footer-app">
         <a href="https://www.alnortegrow.com.ar" target="_blank" rel="noopener noreferrer">
