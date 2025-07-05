@@ -19,4 +19,4 @@ services:
       - key: GOOGLE_APPLICATION_CREDENTIALS_JSON
         sync: false
       - key: FRONTEND_URL
-        value: https://catalog-sheet-frontend.onrender.com 
+        value: https://alnortegrow-catalog.vercel.app 
