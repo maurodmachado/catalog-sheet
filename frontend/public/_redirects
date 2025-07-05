@@ -1,4 +1,4 @@
 # Manejar rutas del frontend
+/*    /index.html   200
 /admin    /index.html   200
-/admin/*  /index.html   200
-/*        /index.html   200 
+/admin/*    /index.html   200 
