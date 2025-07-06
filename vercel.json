@@ -9,20 +9,11 @@
       }
     }
   ],
-  "routes": [
-    {
-      "src": "/api/(.*)",
-      "dest": "https://catalog-sheet-backend.onrender.com/api/$1"
-    },
-    {
-      "handle": "filesystem"
-    },
-    {
-      "src": "/(.*)",
-      "dest": "frontend/dist/index.html"
-    }
-  ],
   "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "https://catalog-sheet-backend.onrender.com/api/$1"
+    },
     {
       "source": "/admin",
       "destination": "/index.html"
