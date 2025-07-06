@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import './App.css'
 import logo from './assets/logo.png'
 import whatsappLogo from './assets/whatsapp-logo.png'
@@ -17,6 +17,8 @@ function App() {
   const [productoDetalle, setProductoDetalle] = useState(null)
   const [busquedaNombre, setBusquedaNombre] = useState('');
   const [ordenPrecio, setOrdenPrecio] = useState('ninguno');
+  const [notificacion, setNotificacion] = useState(null);
+  const carritoRef = useRef(null);
 
   // URL de la API (usa variable de entorno en producción)
   const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3001') + '/api'
@@ -28,6 +30,23 @@ function App() {
   useEffect(() => {
     localStorage.setItem('carrito', JSON.stringify(carrito))
   }, [carrito])
+
+  // Cerrar carrito cuando se hace clic fuera
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (carritoRef.current && !carritoRef.current.contains(event.target)) {
+        setMostrarCarrito(false);
+      }
+    };
+
+    if (mostrarCarrito) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [mostrarCarrito]);
 
   const cargarProductos = async () => {
     try {
@@ -56,6 +75,26 @@ function App() {
     const coincideNombre = producto.nombre.toLowerCase().includes(busquedaNombre.toLowerCase());
     return coincideCategoria && coincideNombre;
   });
+
+  const calcularPrecioOferta = (precioOriginal, oferta) => {
+    if (!oferta) return null
+    
+    // Extraer el porcentaje de descuento del texto de oferta
+    const match = oferta.match(/(\d+)%/)
+    if (match) {
+      const descuento = parseInt(match[1])
+      const precioOferta = precioOriginal * (1 - descuento / 100)
+      return Math.round(precioOferta)
+    }
+    
+    // Si no hay porcentaje, intentar extraer un precio directo
+    const precioMatch = oferta.match(/(\d+)/)
+    if (precioMatch) {
+      return parseInt(precioMatch[1])
+    }
+    
+    return null
+  }
 
   // Ordenar productos: primero los que tienen stock > 0, luego los sin stock, y dentro de los con stock, por categoría alfabética
   productosFiltrados = [...productosFiltrados].sort((a, b) => {
@@ -91,26 +130,6 @@ function App() {
       minimumFractionDigits: 0,
       maximumFractionDigits: 0
     }).format(precio)
-  }
-
-  const calcularPrecioOferta = (precioOriginal, oferta) => {
-    if (!oferta) return null
-    
-    // Extraer el porcentaje de descuento del texto de oferta
-    const match = oferta.match(/(\d+)%/)
-    if (match) {
-      const descuento = parseInt(match[1])
-      const precioOferta = precioOriginal * (1 - descuento / 100)
-      return Math.round(precioOferta)
-    }
-    
-    // Si no hay porcentaje, intentar extraer un precio directo
-    const precioMatch = oferta.match(/(\d+)/)
-    if (precioMatch) {
-      return parseInt(precioMatch[1])
-    }
-    
-    return null
   }
 
   const obtenerIconoCategoria = (categoria) => {
@@ -160,10 +179,13 @@ function App() {
     setCarrito((prev) => {
       const existe = prev.find((p) => p.id === producto.id)
       if (existe) {
+        const nuevaCantidad = existe.cantidad + 1;
+        mostrarNotificacion(`✅ ${producto.nombre} actualizado en el carrito (${nuevaCantidad} unidades)`, 'success');
         return prev.map((p) =>
-          p.id === producto.id ? { ...p, cantidad: p.cantidad + 1 } : p
+          p.id === producto.id ? { ...p, cantidad: nuevaCantidad } : p
         )
       } else {
+        mostrarNotificacion(`✅ ${producto.nombre} agregado al carrito (1 unidad)`, 'success');
         return [...prev, { ...producto, cantidad: 1 }]
       }
     })
@@ -228,6 +250,11 @@ function App() {
       }
     };
   }, [productoDetalle]);
+
+  const mostrarNotificacion = (mensaje, tipo = 'info') => {
+    setNotificacion({ mensaje, tipo });
+    setTimeout(() => setNotificacion(null), 3000);
+  };
 
   if (loading) {
     return (
@@ -299,7 +326,7 @@ function App() {
           🛒 Carrito ({carrito.reduce((acc, p) => acc + p.cantidad, 0)})
         </button>
         {mostrarCarrito && (
-          <div className="carrito-modal">
+          <div className="carrito-modal" ref={carritoRef}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
               <h2 style={{ margin: 0 }}>🛒 Carrito</h2>
               {carrito.length > 0 && (
@@ -544,6 +571,27 @@ function App() {
       <a href="https://www.whatsapp.com/catalog/5493835117722/" className="whatsapp-float" target="_blank" rel="noopener noreferrer" title="Ver catálogo en WhatsApp">
         <img src={whatsappLogo} alt="WhatsApp" style={{width: '70%', height: '70%', objectFit: 'contain', display: 'block'}} />
       </a>
+
+      {/* Notificación flotante */}
+      {notificacion && (
+        <div style={{
+          position: 'fixed',
+          top: 100,
+          right: 20,
+          background: notificacion.tipo === 'error' ? '#ef4444' : notificacion.tipo === 'success' ? '#10b981' : '#3b82f6',
+          color: 'white',
+          padding: '1rem 1.5rem',
+          borderRadius: 12,
+          boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
+          zIndex: 1000,
+          maxWidth: 400,
+          fontWeight: 600,
+          fontSize: '1rem',
+          animation: 'slideIn 0.3s ease-out'
+        }}>
+          {notificacion.mensaje}
+        </div>
+      )}
     </div>
   )
 }

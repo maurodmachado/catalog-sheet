@@ -24,10 +24,10 @@ app.use(helmet({
   },
 }));
 
-// Rate limiting
+// Rate limiting más permisivo para desarrollo
 const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutos
-  max: 100, // máximo 100 requests por ventana
+  windowMs: 1 * 60 * 1000, // 1 minuto
+  max: 1000, // máximo 1000 requests por ventana
   message: 'Demasiadas requests desde esta IP, intenta de nuevo más tarde.',
   standardHeaders: true,
   legacyHeaders: false,
@@ -261,19 +261,40 @@ const CAJA_FILE = path.join(__dirname, 'caja.json');
 
 // Cargar caja persistente al iniciar
 let cajaActual = null;
+console.log('=== CARGANDO CAJA AL INICIAR ===');
+console.log('Archivo de caja:', CAJA_FILE);
+console.log('¿Existe archivo?', fs.existsSync(CAJA_FILE));
+
 try {
   if (fs.existsSync(CAJA_FILE)) {
-    cajaActual = JSON.parse(fs.readFileSync(CAJA_FILE, 'utf8'));
+    console.log('Leyendo archivo de caja...');
+    const cajaData = fs.readFileSync(CAJA_FILE, 'utf8');
+    console.log('Datos leídos:', cajaData.substring(0, 100) + '...');
+    cajaActual = JSON.parse(cajaData);
+    console.log('✅ Caja cargada exitosamente');
+    console.log('Estado de caja:', cajaActual.abierta ? 'abierta' : 'cerrada');
+  } else {
+    console.log('No existe archivo de caja, cajaActual = null');
   }
 } catch (e) {
+  console.error('❌ Error al cargar caja:', e.message);
   cajaActual = null;
 }
 
 function guardarCaja() {
+  console.log('=== GUARDANDO CAJA ===');
+  console.log('cajaActual:', cajaActual ? 'existe' : 'null');
+  
   if (cajaActual) {
+    console.log('Guardando caja en archivo:', CAJA_FILE);
     fs.writeFileSync(CAJA_FILE, JSON.stringify(cajaActual, null, 2));
+    console.log('✅ Caja guardada exitosamente');
   } else if (fs.existsSync(CAJA_FILE)) {
+    console.log('Eliminando archivo de caja vacío');
     fs.unlinkSync(CAJA_FILE);
+    console.log('✅ Archivo de caja eliminado');
+  } else {
+    console.log('No hay caja para guardar y no existe archivo previo');
   }
 }
 
@@ -310,21 +331,64 @@ app.post('/api/caja/abrir', async (req, res) => {
 
 // Consultar estado de caja
 app.get('/api/caja/estado', (req, res) => {
-  if (!cajaActual) return res.json({ abierta: false });
+  console.log('=== CONSULTANDO ESTADO DE CAJA ===');
+  console.log('cajaActual:', cajaActual ? 'existe' : 'null');
+  
+  if (!cajaActual) {
+    console.log('❌ No hay caja cargada, devolviendo abierta: false');
+    return res.json({ abierta: false });
+  }
+  
+  console.log('Estado de caja:', {
+    abierta: cajaActual.abierta,
+    empleado: cajaActual.empleado,
+    turno: cajaActual.turno,
+    cantidadVentas: cajaActual.cantidadVentas,
+    totalVendido: cajaActual.totalVendido
+  });
+  
   res.json(cajaActual);
 });
 
 // Registrar venta en caja (llamar desde /api/ventas)
 function registrarVentaEnCaja(venta) {
-  if (!cajaActual || !cajaActual.abierta) return;
+  console.log('=== REGISTRANDO VENTA EN CAJA ===');
+  console.log('Estado actual de caja:', cajaActual ? 'abierta' : 'cerrada');
+  
+  if (!cajaActual || !cajaActual.abierta) {
+    console.log('❌ No se puede registrar venta: caja no está abierta');
+    return;
+  }
+  
+  console.log('Venta a registrar:', {
+    total: venta.total,
+    efectivo: venta.efectivo,
+    transferencia: venta.transferencia,
+    pos: venta.pos,
+    productos: venta.productos,
+    cantidades: venta.cantidades
+  });
+  
+  // Agregar venta al array
   cajaActual.ventas.push(venta);
+  
+  // Actualizar totales
   cajaActual.totales.efectivo += Number(venta.efectivo || 0);
   cajaActual.totales.transferencia += Number(venta.transferencia || 0);
   cajaActual.totales.pos += Number(venta.pos || 0);
   cajaActual.cantidadVentas += 1;
   cajaActual.cantidadProductos += venta.cantidades.reduce((a, b) => a + Number(b), 0);
   cajaActual.totalVendido = (cajaActual.totalVendido || 0) + Number(venta.total || 0);
+  
+  console.log('Estado de caja después de registrar venta:', {
+    cantidadVentas: cajaActual.cantidadVentas,
+    totalVendido: cajaActual.totalVendido,
+    totales: cajaActual.totales
+  });
+  
+  // Guardar en archivo
   guardarCaja();
+  console.log('✅ Venta registrada en caja exitosamente');
 }
 
 // Cerrar caja
@@ -959,6 +1023,17 @@ app.get('/api/reportes/metricas', async (req, res) => {
     const productosRows = productosResp.data.values;
     console.log('Filas de productos obtenidas:', productosRows ? productosRows.length : 0);
 
+    // Obtener encabezados
+    const headers = productosRows[0];
+    console.log('Headers encontrados:', headers);
+    const nombreIdx = headers.findIndex(h => h.toLowerCase().includes('nombre'));
+    const precioIdx = headers.findIndex(h => h.toLowerCase().includes('precio'));
+    const stockIdx = headers.findIndex(h => h.toLowerCase().includes('stock'));
+    const categoriaIdx = headers.findIndex(h => h.toLowerCase().includes('categoria'));
+    const descripcionIdx = headers.findIndex(h => h.toLowerCase().includes('descripcion'));
+
+    console.log('Índices encontrados:', { nombreIdx, precioIdx, stockIdx, categoriaIdx, descripcionIdx });
+
     // Procesar ventas
     let totalVentas = 0;
     let totalEfectivo = 0;
@@ -1282,6 +1357,250 @@ app.get('/api/reportes/productos-vendidos', async (req, res) => {
   }
 });
 
+// --- ENDPOINTS DE GESTIÓN DE STOCK ---
+
+// Obtener todos los productos de la hoja Stock
+app.get('/api/stock', async (req, res) => {
+  try {
+    console.log('=== OBTENIENDO PRODUCTOS DE STOCK ===');
+    const STOCK_RANGE = 'Stock!A:G';
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId: SPREADSHEET_ID,
+      range: STOCK_RANGE,
+    });
+
+    const rows = response.data.values;
+    if (!rows || rows.length <= 1) {
+      console.log('No hay productos en stock');
+      return res.json([]);
+    }
+
+    // Obtener encabezados
+    const headers = rows[0];
+    console.log('Headers encontrados:', headers);
+    const nombreIdx = headers.findIndex(h => h.toLowerCase().includes('nombre'));
+    const precioIdx = headers.findIndex(h => h.toLowerCase().includes('precio'));
+    const stockIdx = headers.findIndex(h => h.toLowerCase().includes('stock'));
+    const categoriaIdx = headers.findIndex(h => h.toLowerCase().includes('categoria'));
+    const descripcionIdx = headers.findIndex(h => h.toLowerCase().includes('descripcion'));
+
+    console.log('Índices encontrados:', { nombreIdx, precioIdx, stockIdx, categoriaIdx, descripcionIdx });
+
+    // Convertir filas a objetos de productos
+    const productos = rows.slice(1).map((row, index) => ({
+      id: index + 1,
+      nombre: row[nombreIdx] || '',
+      precio: Number(row[precioIdx]) || 0,
+      stock: Number(row[stockIdx]) || 0,
+      categoria: row[categoriaIdx] || '',
+      descripcion: row[descripcionIdx] || '',
+      fila: index + 2 // Fila en Google Sheets (1-indexed + header)
+    }));
+
+    console.log(`Productos obtenidos: ${productos.length}`);
+    res.json(productos);
+  } catch (error) {
+    console.error('Error al obtener productos de stock:', error);
+    res.status(500).json({ error: 'Error al obtener productos de stock' });
+  }
+});
+
+// Actualizar stock de un producto
+app.put('/api/stock/:id', async (req, res) => {
+  try {
+    console.log('=== ACTUALIZANDO STOCK ===');
+    const { id } = req.params;
+    const { stock, precio, categoria, descripcion } = req.body;
+    
+    console.log('Datos a actualizar:', { id, stock, precio, categoria, descripcion });
+
+    // Obtener productos para encontrar la fila
+    const STOCK_RANGE = 'Stock!A:G';
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId: SPREADSHEET_ID,
+      range: STOCK_RANGE,
+    });
+
+    const rows = response.data.values;
+    if (!rows || rows.length <= 1) {
+      return res.status(404).json({ error: 'No hay productos en stock' });
+    }
+
+    const headers = rows[0];
+    console.log('Headers en actualización:', headers);
+    const nombreIdx = headers.findIndex(h => h.toLowerCase().includes('nombre'));
+    const precioIdx = headers.findIndex(h => h.toLowerCase().includes('precio'));
+    const stockIdx = headers.findIndex(h => h.toLowerCase().includes('stock'));
+    const categoriaIdx = headers.findIndex(h => h.toLowerCase().includes('categoria'));
+    const descripcionIdx = headers.findIndex(h => h.toLowerCase().includes('descripcion'));
+
+    console.log('Índices en actualización:', { nombreIdx, precioIdx, stockIdx, categoriaIdx, descripcionIdx });
+
+    // Encontrar la fila del producto
+    const filaProducto = parseInt(id) + 2; // +2 porque el ID es 0-indexed, tenemos header en fila 1, y productos empiezan en fila 2
+    console.log(`ID recibido: ${id}, Fila calculada: ${filaProducto}, Total de filas: ${rows.length}`);
+    if (filaProducto > rows.length) {
+      console.log(`❌ Error: Fila ${filaProducto} no existe. Filas disponibles: 1-${rows.length}`);
+      return res.status(404).json({ error: 'Producto no encontrado' });
+    }
+
+    console.log(`Actualizando fila ${filaProducto} del producto`);
+
+    // Preparar actualizaciones
+    const updates = [];
+    
+    if (stock !== undefined) {
+      const stockCell = String.fromCharCode(65 + stockIdx) + filaProducto;
+      updates.push({
+        range: `Stock!${stockCell}`,
+        values: [[stock]]
+      });
+    }
+    
+    if (precio !== undefined) {
+      const precioCell = String.fromCharCode(65 + precioIdx) + filaProducto;
+      updates.push({
+        range: `Stock!${precioCell}`,
+        values: [[precio]]
+      });
+    }
+    
+    if (categoria !== undefined) {
+      const categoriaCell = String.fromCharCode(65 + categoriaIdx) + filaProducto;
+      updates.push({
+        range: `Stock!${categoriaCell}`,
+        values: [[categoria]]
+      });
+    }
+    
+    if (descripcion !== undefined) {
+      const descripcionCell = String.fromCharCode(65 + descripcionIdx) + filaProducto;
+      updates.push({
+        range: `Stock!${descripcionCell}`,
+        values: [[descripcion]]
+      });
+    }
+
+    if (updates.length === 0) {
+      return res.status(400).json({ error: 'No se especificaron datos para actualizar' });
+    }
+
+    // Ejecutar actualizaciones
+    for (const update of updates) {
+      await sheets.spreadsheets.values.update({
+        spreadsheetId: SPREADSHEET_ID,
+        range: update.range,
+        valueInputOption: 'USER_ENTERED',
+        requestBody: { values: update.values }
+      });
+    }
+
+    console.log('✅ Stock actualizado exitosamente');
+    res.json({ ok: true, message: 'Producto actualizado correctamente' });
+  } catch (error) {
+    console.error('Error al actualizar stock:', error);
+    res.status(500).json({ error: 'Error al actualizar stock' });
+  }
+});
+
+// Agregar stock a un producto (incrementar)
+app.post('/api/stock/:id/agregar', async (req, res) => {
+  try {
+    console.log('=== AGREGANDO STOCK ===');
+    const { id } = req.params;
+    const { cantidad } = req.body;
+    
+    if (!cantidad || cantidad <= 0) {
+      return res.status(400).json({ error: 'La cantidad debe ser mayor a 0' });
+    }
+
+    console.log(`Agregando ${cantidad} unidades al producto ${id}`);
+
+    // Obtener stock actual
+    const STOCK_RANGE = 'Stock!A:G';
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId: SPREADSHEET_ID,
+      range: STOCK_RANGE,
+    });
+
+    const rows = response.data.values;
+    if (!rows || rows.length <= 1) {
+      return res.status(404).json({ error: 'No hay productos en stock' });
+    }
+
+    const headers = rows[0];
+    const stockIdx = headers.findIndex(h => h.toLowerCase().includes('stock'));
+
+    const filaProducto = parseInt(id) + 2; // +2 porque el ID es 0-indexed, tenemos header en fila 1, y productos empiezan en fila 2
+    if (filaProducto > rows.length) {
+      return res.status(404).json({ error: 'Producto no encontrado' });
+    }
+
+    const stockActual = Number(rows[filaProducto - 1][stockIdx]) || 0;
+    const nuevoStock = stockActual + Number(cantidad);
+
+    // Actualizar stock
+    const stockCell = String.fromCharCode(65 + stockIdx) + filaProducto;
+    await sheets.spreadsheets.values.update({
+      spreadsheetId: SPREADSHEET_ID,
+      range: `Stock!${stockCell}`,
+      valueInputOption: 'USER_ENTERED',
+      requestBody: { values: [[nuevoStock]] }
+    });
+
+    console.log(`✅ Stock actualizado: ${stockActual} + ${cantidad} = ${nuevoStock}`);
+    res.json({ 
+      ok: true, 
+      message: `Stock actualizado: ${stockActual} + ${cantidad} = ${nuevoStock}`,
+      stockAnterior: stockActual,
+      stockNuevo: nuevoStock
+    });
+  } catch (error) {
+    console.error('Error al agregar stock:', error);
+    res.status(500).json({ error: 'Error al agregar stock' });
+  }
+});
+
+// Obtener productos con bajo stock (menos de 5 unidades)
+app.get('/api/stock/bajo-stock', async (req, res) => {
+  try {
+    console.log('=== OBTENIENDO PRODUCTOS CON BAJO STOCK ===');
+    const STOCK_RANGE = 'Stock!A:G';
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId: SPREADSHEET_ID,
+      range: STOCK_RANGE,
+    });
+
+    const rows = response.data.values;
+    if (!rows || rows.length <= 1) {
+      return res.json([]);
+    }
+
+    const headers = rows[0];
+    const nombreIdx = headers.findIndex(h => h.toLowerCase().includes('nombre'));
+    const precioIdx = headers.findIndex(h => h.toLowerCase().includes('precio'));
+    const stockIdx = headers.findIndex(h => h.toLowerCase().includes('stock'));
+    const categoriaIdx = headers.findIndex(h => h.toLowerCase().includes('categoria'));
+
+    const productosBajoStock = rows.slice(1)
+      .map((row, index) => ({
+        id: index + 1,
+        nombre: row[nombreIdx] || '',
+        precio: Number(row[precioIdx]) || 0,
+        stock: Number(row[stockIdx]) || 0,
+        categoria: row[categoriaIdx] || '',
+        fila: index + 2
+      }))
+      .filter(producto => producto.stock < 5 && producto.stock >= 0);
+
+    console.log(`Productos con bajo stock: ${productosBajoStock.length}`);
+    res.json(productosBajoStock);
+  } catch (error) {
+    console.error('Error al obtener productos con bajo stock:', error);
+    res.status(500).json({ error: 'Error al obtener productos con bajo stock' });
+  }
+});
+
 // Error handling middleware
 app.use((err, req, res, next) => {
   console.error('Error no manejado:', err);
@@ -1296,8 +1615,13 @@ app.use('*', (req, res) => {
   res.status(404).json({ error: 'Endpoint no encontrado' });
 });
 
-app.listen(PORT, () => {
-  console.log(`Servidor corriendo en http://localhost:${PORT}`);
-  console.log(`API disponible en http://localhost:${PORT}/api/productos`);
-  console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
-}); 
+// Solo iniciar el servidor si no estamos en modo test
+if (process.env.NODE_ENV !== 'test') {
+  app.listen(PORT, () => {
+    console.log(`Servidor corriendo en http://localhost:${PORT}`);
+    console.log(`API disponible en http://localhost:${PORT}/api/productos`);
+    console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+  });
+}
+
+module.exports = app; 

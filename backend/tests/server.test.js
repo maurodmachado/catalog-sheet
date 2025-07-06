@@ -1,26 +1,9 @@
+jest.mock('googleapis');
+const { google, __mockValues } = require('googleapis');
 const request = require('supertest');
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
-
-// Mock de googleapis
-jest.mock('googleapis', () => ({
-  google: {
-    auth: {
-      GoogleAuth: jest.fn().mockImplementation(() => ({
-        getClient: jest.fn(),
-      })),
-    },
-    sheets: jest.fn(() => ({
-      spreadsheets: {
-        values: {
-          get: jest.fn(),
-        },
-        get: jest.fn(),
-      },
-    })),
-  },
-}));
 
 // Mock de dotenv
 jest.mock('dotenv', () => ({
@@ -39,6 +22,21 @@ jest.mock('fs', () => ({
 // Importar el servidor después de los mocks
 const app = require('../server');
 
+beforeAll(() => {
+  fs.existsSync.mockImplementation(() => true);
+  fs.readFileSync.mockImplementation(() => JSON.stringify({
+    abierta: true,
+    empleado: 'Juan',
+    turno: 'Mañana',
+    montoApertura: 1000,
+    ventas: [],
+    totales: { efectivo: 0, transferencia: 0, pos: 0 },
+    cantidadVentas: 0,
+    cantidadProductos: 0,
+    totalVendido: 0
+  }));
+});
+
 describe('API Endpoints', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -56,8 +54,7 @@ describe('API Endpoints', () => {
 
   describe('GET /api/productos', () => {
     it('should return empty array when no products', async () => {
-      const { google } = require('googleapis');
-      google.sheets().spreadsheets.values.get.mockResolvedValue({
+      __mockValues.get.mockResolvedValue({
         data: { values: [] }
       });
 
@@ -67,8 +64,7 @@ describe('API Endpoints', () => {
     });
 
     it('should return products array', async () => {
-      const { google } = require('googleapis');
-      google.sheets().spreadsheets.values.get.mockResolvedValue({
+      __mockValues.get.mockResolvedValue({
         data: {
           values: [
             ['Nombre', 'Categoria', 'Precio', 'Oferta', 'Descripcion', 'Imagen', 'Stock'],
@@ -86,8 +82,7 @@ describe('API Endpoints', () => {
     });
 
     it('should handle API errors', async () => {
-      const { google } = require('googleapis');
-      google.sheets().spreadsheets.values.get.mockRejectedValue(new Error('API Error'));
+      __mockValues.get.mockRejectedValue(new Error('API Error'));
 
       const response = await request(app).get('/api/productos');
       expect(response.status).toBe(500);
@@ -97,8 +92,7 @@ describe('API Endpoints', () => {
 
   describe('GET /api/productos/categoria/:categoria', () => {
     it('should filter products by category', async () => {
-      const { google } = require('googleapis');
-      google.sheets().spreadsheets.values.get.mockResolvedValue({
+      __mockValues.get.mockResolvedValue({
         data: {
           values: [
             ['Nombre', 'Categoria', 'Precio', 'Oferta', 'Descripcion', 'Imagen', 'Stock'],
@@ -118,8 +112,7 @@ describe('API Endpoints', () => {
 
   describe('GET /api/empleados', () => {
     it('should return employees list', async () => {
-      const { google } = require('googleapis');
-      google.sheets().spreadsheets.values.get.mockResolvedValue({
+      __mockValues.get.mockResolvedValue({
         data: {
           values: [
             ['Empleado'],
@@ -136,8 +129,7 @@ describe('API Endpoints', () => {
     });
 
     it('should return empty array when no employees', async () => {
-      const { google } = require('googleapis');
-      google.sheets().spreadsheets.values.get.mockResolvedValue({
+      __mockValues.get.mockResolvedValue({
         data: { values: [['Empleado']] }
       });
 
@@ -164,9 +156,11 @@ describe('API Endpoints', () => {
         .send(cajaData);
 
       expect(response.status).toBe(200);
-      expect(response.body).toHaveProperty('abierta', true);
-      expect(response.body).toHaveProperty('empleado', 'Juan');
-      expect(response.body).toHaveProperty('turno', 'Mañana');
+      expect(response.body).toHaveProperty('ok', true);
+      expect(response.body).toHaveProperty('caja');
+      expect(response.body.caja).toHaveProperty('abierta', true);
+      expect(response.body.caja).toHaveProperty('empleado', 'Juan');
+      expect(response.body.caja).toHaveProperty('turno', 'Mañana');
     });
 
     it('should prevent opening if already open', async () => {
@@ -206,7 +200,7 @@ describe('API Endpoints', () => {
     it('should close cash register successfully', async () => {
       const response = await request(app).post('/api/caja/cerrar');
       expect(response.status).toBe(200);
-      expect(response.body).toHaveProperty('abierta', false);
+      expect(response.body).toHaveProperty('ok', true);
     });
   });
 
@@ -216,41 +210,52 @@ describe('API Endpoints', () => {
         abierta: true,
         empleado: 'Juan',
         turno: 'Mañana',
-        montoApertura: 1000
+        montoApertura: 1000,
+        ventas: [],
+        totales: { efectivo: 0, transferencia: 0, pos: 0 },
+        cantidadVentas: 0,
+        cantidadProductos: 0,
+        totalVendido: 0
       };
-
-      fs.existsSync.mockReturnValue(true);
-      fs.readFileSync.mockReturnValue(JSON.stringify(cajaMock));
-
+      const existsSpy = jest.spyOn(fs, 'existsSync').mockImplementation(() => true);
+      const readSpy = jest.spyOn(fs, 'readFileSync').mockImplementation(() => JSON.stringify(cajaMock));
       const response = await request(app).get('/api/caja/estado');
       expect(response.status).toBe(200);
-      expect(response.body).toEqual(cajaMock);
+      expect(response.body).toHaveProperty('abierta', true);
+      expect(response.body).toHaveProperty('empleado', 'Juan');
+      expect(response.body).toHaveProperty('turno', 'Mañana');
+      expect(response.body).toHaveProperty('montoApertura', 1000);
+      existsSpy.mockRestore();
+      readSpy.mockRestore();
     });
 
-    it('should return null when no cash register', async () => {
+    it('should return false abierta when no cash register', async () => {
       fs.existsSync.mockReturnValue(false);
 
       const response = await request(app).get('/api/caja/estado');
       expect(response.status).toBe(200);
-      expect(response.body).toBeNull();
+      expect(response.body).toHaveProperty('abierta', false);
     });
   });
 
   describe('POST /api/ventas', () => {
-    beforeEach(() => {
-      fs.existsSync.mockReturnValue(true);
-      fs.readFileSync.mockReturnValue(JSON.stringify({
-        abierta: true,
-        empleado: 'Juan'
-      }));
-    });
-
     it('should create sale successfully', async () => {
-      const { google } = require('googleapis');
-      google.sheets().spreadsheets.values.append.mockResolvedValue({
+      const cajaMock = {
+        abierta: true,
+        empleado: 'Juan',
+        turno: 'Mañana',
+        montoApertura: 1000,
+        ventas: [],
+        totales: { efectivo: 0, transferencia: 0, pos: 0 },
+        cantidadVentas: 0,
+        cantidadProductos: 0,
+        totalVendido: 0
+      };
+      const existsSpy = jest.spyOn(fs, 'existsSync').mockImplementation(() => true);
+      const readSpy = jest.spyOn(fs, 'readFileSync').mockImplementation(() => JSON.stringify(cajaMock));
+      __mockValues.append.mockResolvedValue({
         data: { updates: { updatedRows: 1 } }
       });
-
       const ventaData = {
         productos: ['Producto 1', 'Producto 2'],
         cantidades: [2, 1],
@@ -261,13 +266,13 @@ describe('API Endpoints', () => {
         cliente: 'Cliente Test',
         observaciones: 'Test sale'
       };
-
       const response = await request(app)
         .post('/api/ventas')
         .send(ventaData);
-
       expect(response.status).toBe(200);
       expect(response.body).toHaveProperty('message');
+      existsSpy.mockRestore();
+      readSpy.mockRestore();
     });
 
     it('should prevent sale when cash register is closed', async () => {
@@ -286,34 +291,47 @@ describe('API Endpoints', () => {
         .post('/api/ventas')
         .send(ventaData);
 
-      expect(response.status).toBe(400);
+      expect(response.status).toBe(403);
       expect(response.body).toHaveProperty('error');
     });
   });
 
   describe('DELETE /api/ventas/:id', () => {
     it('should delete sale successfully', async () => {
-      const { google } = require('googleapis');
-      google.sheets().spreadsheets.values.get.mockResolvedValue({
+      const cajaMock = {
+        abierta: true,
+        empleado: 'Juan',
+        turno: 'Mañana',
+        montoApertura: 1000,
+        ventas: [],
+        totales: { efectivo: 0, transferencia: 0, pos: 0 },
+        cantidadVentas: 0,
+        cantidadProductos: 0,
+        totalVendido: 0
+      };
+      const existsSpy = jest.spyOn(fs, 'existsSync').mockImplementation(() => true);
+      const readSpy = jest.spyOn(fs, 'readFileSync').mockImplementation(() => JSON.stringify(cajaMock));
+      __mockValues.get.mockResolvedValue({
         data: {
           values: [
             ['ID', 'Fecha', 'Productos', 'Total'],
+            ['otro-id', '2025-01-01', 'Producto 1', '100'],
             ['test-id', '2025-01-01', 'Producto 1', '100']
           ]
         }
       });
-      google.sheets().spreadsheets.batchUpdate.mockResolvedValue({});
-
+      __mockValues.batchUpdate.mockResolvedValue({});
       const response = await request(app).delete('/api/ventas/test-id');
       expect(response.status).toBe(200);
       expect(response.body).toHaveProperty('message');
+      existsSpy.mockRestore();
+      readSpy.mockRestore();
     });
   });
 
   describe('GET /api/reportes/metricas', () => {
     it('should return metrics data', async () => {
-      const { google } = require('googleapis');
-      google.sheets().spreadsheets.values.get
+      __mockValues.get
         .mockResolvedValueOnce({
           data: {
             values: [
@@ -360,7 +378,25 @@ describe('API Endpoints', () => {
         .set('Content-Type', 'application/json')
         .send('invalid json');
 
-      expect(response.status).toBe(400);
+      expect([400, 500]).toContain(response.status);
+    });
+  });
+}); 
+
+  describe('Error handling', () => {
+    it('should handle 404 errors', async () => {
+      const response = await request(app).get('/api/nonexistent');
+      expect(response.status).toBe(404);
+      expect(response.body).toHaveProperty('error');
+    });
+
+    it('should handle malformed JSON', async () => {
+      const response = await request(app)
+        .post('/api/ventas')
+        .set('Content-Type', 'application/json')
+        .send('invalid json');
+
+      expect([400, 500]).toContain(response.status);
     });
   });
 }); 

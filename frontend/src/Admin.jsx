@@ -45,6 +45,31 @@ export default function Admin() {
   const [eliminandoCaja, setEliminandoCaja] = useState(null);
   const [mostrarGestionCajas, setMostrarGestionCajas] = useState(false);
 
+  // --- Estados para gestión de stock ---
+  const [productosStock, setProductosStock] = useState([]);
+  const [productosBajoStock, setProductosBajoStock] = useState([]);
+  const [loadingStock, setLoadingStock] = useState(false);
+  const [errorStock, setErrorStock] = useState('');
+  const [productoSeleccionadoStock, setProductoSeleccionadoStock] = useState(null);
+  const [nuevoPrecio, setNuevoPrecio] = useState('');
+  const [nuevaCategoria, setNuevaCategoria] = useState('');
+  const [nuevaDescripcion, setNuevaDescripcion] = useState('');
+  const [cantidadAgregar, setCantidadAgregar] = useState('');
+  const [editandoStock, setEditandoStock] = useState(false);
+  const [busquedaStock, setBusquedaStock] = useState('');
+  const [categoriaFiltro, setCategoriaFiltro] = useState('');
+  const [ordenStock, setOrdenStock] = useState('asc');
+  const [mostrarSinStock, setMostrarSinStock] = useState(true);
+  const [mostrarGestionStock, setMostrarGestionStock] = useState(false);
+
+
+  
+  // --- Estados para edición masiva de precios ---
+  const [mostrarEdicionMasiva, setMostrarEdicionMasiva] = useState(false);
+  const [porcentajeMasivo, setPorcentajeMasivo] = useState('');
+  const [editandoMasivamente, setEditandoMasivamente] = useState(false);
+  const [alcanceEdicionMasiva, setAlcanceEdicionMasiva] = useState('filtrados'); // 'filtrados', 'todos'
+
   // --- Estados para reportes ---
   const [metricas, setMetricas] = useState(null);
   const [loadingMetricas, setLoadingMetricas] = useState(false);
@@ -60,8 +85,7 @@ export default function Admin() {
   const [filtroAnio, setFiltroAnio] = useState(String(new Date().getFullYear())); // Año actual
   const [filtroEmpleado, setFiltroEmpleado] = useState('');
 
-  // --- Estado para mostrar productos sin stock ---
-  const [mostrarSinStock, setMostrarSinStock] = useState(false);
+
 
   // --- Estado para mostrar todos los productos ---
   const [mostrarTodosProductos, setMostrarTodosProductos] = useState(false);
@@ -119,14 +143,36 @@ export default function Admin() {
     localStorage.removeItem('adminUsuario');
   };
 
+  // --- Función de utilidad para peticiones con delay ---
+  const fetchWithDelay = async (url, options = {}) => {
+    // Agregar un pequeño delay para evitar rate limiting
+    await new Promise(resolve => setTimeout(resolve, 100));
+    
+    const res = await fetch(url, {
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+      }
+    });
+    
+    if (!res.ok) {
+      if (res.status === 429) {
+        throw new Error('Demasiadas peticiones. Intenta de nuevo en unos segundos.');
+      }
+      throw new Error(`Error ${res.status}: ${res.statusText}`);
+    }
+    
+    return res;
+  };
+
   // --- Función para cargar productos desde la API ---
   const cargarProductos = async () => {
     setLoadingProductos(true);
     setErrorProductos('');
     try {
       const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3001') + '/api';
-      const res = await fetch(`${API_URL}/productos`);
-      if (!res.ok) throw new Error('Error al cargar productos');
+      const res = await fetchWithDelay(`${API_URL}/productos`);
       const data = await res.json();
       setProductos(data);
     } catch (err) {
@@ -224,8 +270,10 @@ export default function Admin() {
         return;
       }
       setCarrito(carrito.map(p => p.id === productoSeleccionado.id ? { ...p, cantidad: nuevaCantidad } : p));
+      mostrarNotificacion(`✅ ${productoSeleccionado.nombre} actualizado en el carrito (${nuevaCantidad} unidades)`, 'success');
     } else {
       setCarrito([...carrito, { ...productoSeleccionado, cantidad: cantidadNum }]);
+      mostrarNotificacion(`✅ ${productoSeleccionado.nombre} agregado al carrito (${cantidadNum} unidades)`, 'success');
     }
     setProductoSeleccionado(null);
     setCantidad('1');
@@ -238,29 +286,43 @@ export default function Admin() {
 
   const handleGenerarVenta = async () => {
     if (carrito.length === 0 || totalPago !== totalVenta || totalPago > totalVenta) return;
+    
+    console.log('=== GENERANDO VENTA ===');
+    console.log('Carrito:', carrito);
+    console.log('Total venta:', totalVenta);
+    console.log('Forma de pago:', formaPago);
+    
     setLoadingVenta(true);
     try {
       const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3001') + '/api';
-      const res = await fetch(`${API_URL}/ventas`, {
+      const ventaData = {
+        productos: carrito.map(p => p.nombre),
+        cantidades: carrito.map(p => p.cantidad),
+        total: totalVenta,
+        efectivo: Number(formaPago.efectivo) || 0,
+        transferencia: Number(formaPago.transferencia) || 0,
+        pos: Number(formaPago.pos) || 0,
+        cliente,
+        observaciones
+      };
+      
+      console.log('Enviando venta al servidor:', ventaData);
+      
+      const res = await fetchWithDelay(`${API_URL}/ventas`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          productos: carrito.map(p => p.nombre),
-          cantidades: carrito.map(p => p.cantidad),
-          total: totalVenta,
-          efectivo: Number(formaPago.efectivo) || 0,
-          transferencia: Number(formaPago.transferencia) || 0,
-          pos: Number(formaPago.pos) || 0,
-          cliente,
-          observaciones
-        })
+        body: JSON.stringify(ventaData)
       });
-      if (!res.ok) throw new Error('Error al registrar venta');
+      
+      console.log('Respuesta del servidor:', res.status, res.statusText);
+      
+      const result = await res.json();
+      console.log('Venta registrada exitosamente:', result);
       
       // Mostrar notificación de éxito
       mostrarNotificacion('✅ Venta registrada correctamente', 'success');
       
       // Recargar productos para actualizar stock
+      console.log('Recargando productos...');
       await cargarProductos();
       
       // Limpiar formulario
@@ -268,9 +330,15 @@ export default function Admin() {
       setFormaPago({ efectivo: '', transferencia: '', pos: '' });
       setCliente('');
       setObservaciones('');
+      
+      // Recargar estado de caja
+      console.log('Recargando estado de caja...');
       await cargarCaja();
+      
+      console.log('✅ Venta completada exitosamente');
     } catch (err) {
-      mostrarNotificacion('❌ Error al registrar venta', 'error');
+      console.error('❌ Error al registrar venta:', err);
+      mostrarNotificacion(`❌ Error al registrar venta: ${err.message}`, 'error');
     } finally {
       setLoadingVenta(false);
     }
@@ -287,13 +355,22 @@ export default function Admin() {
 
   // --- Consultar estado de caja al iniciar sesión y tras cada venta ---
   const cargarCaja = async () => {
+    console.log('=== CARGANDO ESTADO DE CAJA ===');
     setLoadingCaja(true);
     try {
       const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3001') + '/api';
-      const res = await fetch(`${API_URL}/caja/estado`);
+      console.log('Consultando estado de caja en:', `${API_URL}/caja/estado`);
+      
+      const res = await fetchWithDelay(`${API_URL}/caja/estado`);
+      console.log('Respuesta del servidor:', res.status, res.statusText);
+      
       const data = await res.json();
+      console.log('Estado de caja recibido:', data);
+      
       setCaja(data);
+      console.log('✅ Estado de caja actualizado en frontend');
     } catch (err) {
+      console.error('❌ Error al cargar estado de caja:', err);
       setCaja(null);
     } finally {
       setLoadingCaja(false);
@@ -359,7 +436,7 @@ export default function Admin() {
     const cargarEmpleados = async () => {
       try {
         const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3001') + '/api';
-        const res = await fetch(`${API_URL}/empleados`);
+        const res = await fetchWithDelay(`${API_URL}/empleados`);
         const data = await res.json();
         // Asegurar que data sea un array
         if (Array.isArray(data)) {
@@ -382,14 +459,9 @@ export default function Admin() {
     setErrorVentas('');
     try {
       const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3001') + '/api';
-      const res = await fetch(`${API_URL}/ventas?t=${Date.now()}`, {
+      const res = await fetchWithDelay(`${API_URL}/ventas?t=${Date.now()}`, {
         cache: 'no-cache'
       });
-      if (!res.ok) {
-        const errorText = await res.text();
-        console.error('Error al cargar ventas:', res.status, errorText);
-        throw new Error(`Error ${res.status}: ${errorText}`);
-      }
       const data = await res.json();
       console.log('Ventas cargadas:', data.length, 'ventas');
       console.log('Datos de ventas:', JSON.stringify(data, null, 2));
@@ -559,18 +631,394 @@ export default function Admin() {
 
   const cargarProductosVendidos = async () => {
     setLoadingProductosVendidos(true);
+    setErrorProductosVendidos('');
     try {
       const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3001') + '/api';
-      const res = await fetch(`${API_URL}/reportes/productos-vendidos`);
-      if (!res.ok) throw new Error('Error al cargar productos vendidos');
+      const res = await fetch(`${API_URL}/reportes/productos-vendidos?t=${Date.now()}`, {
+        cache: 'no-cache'
+      });
+      if (!res.ok) {
+        const errorText = await res.text();
+        console.error('Error al cargar productos vendidos:', res.status, errorText);
+        throw new Error(`Error ${res.status}: ${errorText}`);
+      }
       const data = await res.json();
+      console.log('Productos vendidos cargados:', data.length, 'productos');
       setProductosVendidos(data);
     } catch (err) {
-      mostrarNotificacion('❌ Error al cargar productos vendidos', 'error');
+      console.error('Error completo al cargar productos vendidos:', err);
+      setErrorProductosVendidos(`No se pudieron cargar los productos vendidos: ${err.message}`);
     } finally {
       setLoadingProductosVendidos(false);
     }
   };
+
+  // --- Funciones para gestión de stock ---
+  const cargarStock = async () => {
+    console.log('=== CARGANDO PRODUCTOS DE STOCK ===');
+    setLoadingStock(true);
+    setErrorStock('');
+    try {
+      const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3001') + '/api';
+      const res = await fetchWithDelay(`${API_URL}/stock?t=${Date.now()}`, {
+        cache: 'no-cache'
+      });
+      
+      const data = await res.json();
+      console.log('Productos de stock cargados:', data.length, 'productos');
+      console.log('Datos actualizados:', data.map(p => ({ id: p.id, nombre: p.nombre, precio: p.precio })));
+      
+      // Forzar actualización del estado
+      setProductosStock(data);
+      
+      // También cargar productos con bajo stock
+      await cargarProductosBajoStock();
+    } catch (err) {
+      console.error('Error completo al cargar stock:', err);
+      setErrorStock(`No se pudieron cargar los productos de stock: ${err.message}`);
+    } finally {
+      setLoadingStock(false);
+    }
+  };
+
+  const cargarProductosBajoStock = async () => {
+    try {
+      const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3001') + '/api';
+      const res = await fetchWithDelay(`${API_URL}/stock/bajo-stock?t=${Date.now()}`, {
+        cache: 'no-cache'
+      });
+      
+      const data = await res.json();
+      console.log('Productos con bajo stock:', data.length, 'productos');
+      setProductosBajoStock(data);
+    } catch (err) {
+      console.error('Error al cargar productos con bajo stock:', err);
+    }
+  };
+
+  const seleccionarProductoStock = (producto) => {
+    console.log('Producto seleccionado para edición:', producto);
+    setProductoSeleccionadoStock(producto);
+    setNuevoPrecio(String(producto.precio));
+    setNuevaCategoria(producto.categoria);
+    setNuevaDescripcion(producto.descripcion);
+    setCantidadAgregar('');
+    setEditandoStock(false);
+  };
+
+  const actualizarProductoStock = async () => {
+    if (!productoSeleccionadoStock) return;
+    
+    console.log('=== ACTUALIZANDO PRODUCTO DE STOCK ===');
+    setEditandoStock(true);
+    
+    try {
+      const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3001') + '/api';
+      const updateData = {};
+      
+      if (nuevoPrecio !== String(productoSeleccionadoStock.precio)) {
+        updateData.precio = Number(nuevoPrecio);
+      }
+      if (nuevaCategoria !== productoSeleccionadoStock.categoria) {
+        updateData.categoria = nuevaCategoria;
+      }
+      if (nuevaDescripcion !== productoSeleccionadoStock.descripcion) {
+        updateData.descripcion = nuevaDescripcion;
+      }
+      
+      if (Object.keys(updateData).length === 0) {
+        mostrarNotificacion('No hay cambios para guardar', 'info');
+        return;
+      }
+      
+      console.log('Datos a actualizar:', updateData);
+      
+      // Actualizar producto - usar el index correcto (producto.id - 1)
+      const res = await fetch(`${API_URL}/stock/${productoSeleccionadoStock.id - 1}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updateData)
+      });
+      
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({ error: 'Error desconocido' }));
+        throw new Error(errorData.error || `Error ${res.status}`);
+      }
+      
+      const result = await res.json();
+      console.log('Producto actualizado exitosamente:', result);
+      mostrarNotificacion('✅ Producto actualizado correctamente', 'success');
+      
+      // Recargar stock
+      await cargarStock();
+      
+      // Limpiar formulario
+      setProductoSeleccionadoStock(null);
+      setNuevoPrecio('');
+      setNuevaCategoria('');
+      setNuevaDescripcion('');
+    } catch (err) {
+      console.error('Error al actualizar producto:', err);
+      mostrarNotificacion(`❌ Error: ${err.message}`, 'error');
+    } finally {
+      setEditandoStock(false);
+    }
+  };
+
+  const agregarStock = async () => {
+    if (!productoSeleccionadoStock || !cantidadAgregar || cantidadAgregar <= 0) {
+      mostrarNotificacion('Por favor ingresa una cantidad válida', 'error');
+      return;
+    }
+
+    setEditandoStock(true);
+    try {
+      const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3001') + '/api';
+      const res = await fetch(`${API_URL}/stock/${productoSeleccionadoStock.id - 1}/agregar`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cantidad: Number(cantidadAgregar) })
+      });
+      
+      const data = await res.json();
+      
+      if (data.ok) {
+        mostrarNotificacion(`✅ ${data.message}`, 'success');
+        setCantidadAgregar('');
+        setProductoSeleccionadoStock(null);
+        cargarStock();
+        cargarProductosBajoStock();
+      } else {
+        mostrarNotificacion(data.error || 'Error al agregar stock', 'error');
+      }
+    } catch (err) {
+      mostrarNotificacion('Error de conexión', 'error');
+    } finally {
+      setEditandoStock(false);
+    }
+  };
+
+  // --- Funciones para filtrar y ordenar productos de stock ---
+  const obtenerProductosFiltrados = () => {
+    let productosFiltrados = [...productosStock];
+    
+    // Filtrar por búsqueda
+    if (busquedaStock) {
+      productosFiltrados = productosFiltrados.filter(producto =>
+        producto.nombre.toLowerCase().includes(busquedaStock.toLowerCase()) ||
+        producto.categoria.toLowerCase().includes(busquedaStock.toLowerCase()) ||
+        producto.descripcion.toLowerCase().includes(busquedaStock.toLowerCase())
+      );
+    }
+    
+    // Filtrar por categoría
+    if (categoriaFiltro) {
+      productosFiltrados = productosFiltrados.filter(producto =>
+        producto.categoria === categoriaFiltro
+      );
+    }
+    
+    // Filtrar por stock (mostrar/ocultar productos sin stock)
+    if (!mostrarSinStock) {
+      productosFiltrados = productosFiltrados.filter(producto => 
+        producto.stock > 0
+      );
+    }
+    
+    // Ordenar por stock
+    productosFiltrados.sort((a, b) => {
+      if (ordenStock === 'asc') {
+        return a.stock - b.stock;
+      } else {
+        return b.stock - a.stock;
+      }
+    });
+    
+    return productosFiltrados;
+  };
+
+  const obtenerCategoriasUnicas = () => {
+    const categorias = productosStock.map(p => p.categoria).filter(Boolean);
+    return [...new Set(categorias)].sort();
+  };
+
+  // --- Función para redondeo inteligente de precios ---
+  const redondearPrecioInteligente = (precio) => {
+    // Si el precio es menor a 1000, redondear a múltiplos de 100
+    if (precio < 1000) {
+      return Math.round(precio / 100) * 100;
+    }
+    
+    // Si el precio es mayor o igual a 1000, redondear a múltiplos de 100
+    // pero con lógica especial para números como 1996 -> 2000, 1945 -> 1900
+    const centenas = Math.floor(precio / 100);
+    const decenas = Math.floor((precio % 100) / 10);
+    const unidades = precio % 10;
+    
+    // Si las decenas son 9 y las unidades son 5 o más, subir a la siguiente centena
+    if (decenas === 9 && unidades >= 5) {
+      return (centenas + 1) * 100;
+    }
+    
+    // Si las decenas son 4 y las unidades son 5 o más, subir a la siguiente centena
+    if (decenas === 4 && unidades >= 5) {
+      return (centenas + 1) * 100;
+    }
+    
+    // En otros casos, redondear a la centena más cercana
+    return Math.round(precio / 100) * 100;
+  };
+
+  // --- Función para obtener productos según alcance de edición masiva ---
+  const obtenerProductosParaEdicionMasiva = () => {
+    let productos = [...productosStock];
+    
+    // Aplicar filtros según el alcance
+    switch (alcanceEdicionMasiva) {
+      case 'filtrados':
+        // Aplicar filtros de búsqueda y categoría del panel
+        if (busquedaStock) {
+          productos = productos.filter(producto =>
+            producto.nombre.toLowerCase().includes(busquedaStock.toLowerCase()) ||
+            producto.categoria.toLowerCase().includes(busquedaStock.toLowerCase()) ||
+            producto.descripcion.toLowerCase().includes(busquedaStock.toLowerCase())
+          );
+        }
+        if (categoriaFiltro) {
+          productos = productos.filter(producto => producto.categoria === categoriaFiltro);
+        }
+        break;
+      case 'todos':
+        // Usar todos los productos sin filtros
+        break;
+      default:
+        // Por defecto usar productos filtrados
+        if (busquedaStock) {
+          productos = productos.filter(producto =>
+            producto.nombre.toLowerCase().includes(busquedaStock.toLowerCase()) ||
+            producto.categoria.toLowerCase().includes(busquedaStock.toLowerCase()) ||
+            producto.descripcion.toLowerCase().includes(busquedaStock.toLowerCase())
+          );
+        }
+        if (categoriaFiltro) {
+          productos = productos.filter(producto => producto.categoria === categoriaFiltro);
+        }
+        break;
+    }
+    
+    // Ordenar por ID para mantener orden consistente
+    productos.sort((a, b) => a.id - b.id);
+    
+    return productos;
+  };
+
+  // --- Función para edición masiva de precios ---
+  const aplicarEdicionMasiva = async () => {
+    if (!porcentajeMasivo || porcentajeMasivo === '0') {
+      mostrarNotificacion('Por favor ingresa un porcentaje válido', 'error');
+      return;
+    }
+
+    const porcentaje = parseFloat(porcentajeMasivo);
+    if (isNaN(porcentaje)) {
+      mostrarNotificacion('Por favor ingresa un porcentaje válido', 'error');
+      return;
+    }
+
+    setEditandoMasivamente(true);
+    try {
+      const productosAActualizar = obtenerProductosParaEdicionMasiva();
+
+      console.log(`📋 Productos a actualizar: ${productosAActualizar.length}`);
+      productosAActualizar.forEach((p, index) => {
+        console.log(`  ${index + 1}. ID: ${p.id}, Nombre: ${p.nombre}, Precio: ${p.precio}`);
+      });
+
+      if (productosAActualizar.length === 0) {
+        mostrarNotificacion('No hay productos para actualizar con los criterios seleccionados', 'error');
+        setEditandoMasivamente(false);
+        return;
+      }
+
+      let actualizados = 0;
+      let errores = 0;
+
+      for (const producto of productosAActualizar) {
+        try {
+          // Calcular nuevo precio con porcentaje
+          const nuevoPrecio = producto.precio * (1 + porcentaje / 100);
+          
+          // Aplicar redondeo inteligente
+          const precioRedondeado = redondearPrecioInteligente(nuevoPrecio);
+          
+          console.log(`🔄 Actualizando producto ${producto.id} (${producto.nombre}): ${producto.precio} → ${precioRedondeado}`);
+          console.log(`📊 Datos del producto: ID=${producto.id}, Fila=${producto.fila}, Index=${producto.id - 1}`);
+          
+          // Actualizar producto - usar el index correcto (producto.id - 1)
+          const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3001') + '/api';
+          console.log(`🌐 URL de la petición: ${API_URL}/stock/${producto.id - 1}`);
+          
+          const res = await fetch(`${API_URL}/stock/${producto.id - 1}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ precio: precioRedondeado })
+          });
+          
+          if (res.ok) {
+            actualizados++;
+            console.log(`✅ Producto ${producto.id} actualizado exitosamente`);
+          } else {
+            errores++;
+            console.log(`❌ Error actualizando producto ${producto.id}: ${res.status}`);
+          }
+          
+          // Agregar delay entre peticiones para evitar rate limiting
+          await new Promise(resolve => setTimeout(resolve, 200));
+        } catch (err) {
+          errores++;
+          console.log(`❌ Error en producto ${producto.id}:`, err);
+        }
+      }
+
+      // Mostrar resultado
+      if (actualizados > 0) {
+        const alcanceTexto = alcanceEdicionMasiva === 'todos' ? 'todos los productos' : 'productos filtrados';
+        mostrarNotificacion(`✅ ${actualizados} productos actualizados (${alcanceTexto})${errores > 0 ? `, ${errores} errores` : ''}`, 'success');
+        setPorcentajeMasivo('');
+        setMostrarEdicionMasiva(false);
+        
+        // Pequeña pausa para asegurar que el backend termine de procesar
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        // Forzar recarga completa de stock
+        console.log('🔄 Recargando stock después de edición masiva...');
+        await cargarStock();
+        await cargarProductosBajoStock();
+        console.log('✅ Stock recargado exitosamente');
+        
+        // Forzar re-render del componente con un delay adicional
+        setTimeout(() => {
+          setProductosStock(prevStock => [...prevStock]);
+          console.log('🔄 Forzando actualización visual de productos...');
+          
+          // Mostrar notificación de éxito
+          mostrarNotificacion(`✅ Edición masiva completada: ${actualizados} productos actualizados con ${porcentaje}% de cambio`, 'exito');
+        }, 300);
+      } else {
+        mostrarNotificacion('❌ No se pudo actualizar ningún producto', 'error');
+      }
+    } catch (err) {
+      mostrarNotificacion('Error de conexión', 'error');
+    } finally {
+      setEditandoMasivamente(false);
+    }
+  };
+
+  useEffect(() => {
+    if (mostrarGestionStock) {
+      cargarStock();
+    }
+  }, [mostrarGestionStock]);
 
   // Cargar reportes cuando se muestra la vista
   useEffect(() => {
@@ -717,10 +1165,10 @@ export default function Admin() {
           {/* Botones de navegación */}
           <div style={{ display: 'flex', gap: 16, marginBottom: 24, flexWrap: 'wrap' }}>
             <button 
-              onClick={() => { setMostrarGestionVentas(false); setMostrarGestionCajas(false); setMostrarReportes(false); }}
+              onClick={() => { setMostrarGestionVentas(false); setMostrarGestionCajas(false); setMostrarReportes(false); setMostrarGestionStock(false); }}
               style={{ 
-                background: (!mostrarGestionVentas && !mostrarGestionCajas && !mostrarReportes) ? 'linear-gradient(135deg, #fbbf24, #f59e0b)' : '#f1f5f9', 
-                color: (!mostrarGestionVentas && !mostrarGestionCajas && !mostrarReportes) ? '#1e293b' : '#64748b',
+                background: (!mostrarGestionVentas && !mostrarGestionCajas && !mostrarReportes && !mostrarGestionStock) ? 'linear-gradient(135deg, #fbbf24, #f59e0b)' : '#f1f5f9', 
+                color: (!mostrarGestionVentas && !mostrarGestionCajas && !mostrarReportes && !mostrarGestionStock) ? '#1e293b' : '#64748b',
                 border: 'none', 
                 padding: '0.7rem 1.2rem', 
                 borderRadius: 10, 
@@ -732,7 +1180,7 @@ export default function Admin() {
               🛒 Nueva Venta
             </button>
             <button 
-              onClick={() => { setMostrarGestionVentas(true); setMostrarGestionCajas(false); setMostrarReportes(false); }}
+              onClick={() => { setMostrarGestionVentas(true); setMostrarGestionCajas(false); setMostrarReportes(false); setMostrarGestionStock(false); }}
               style={{ 
                 background: mostrarGestionVentas ? 'linear-gradient(135deg, #fbbf24, #f59e0b)' : '#f1f5f9', 
                 color: mostrarGestionVentas ? '#1e293b' : '#64748b',
@@ -747,7 +1195,7 @@ export default function Admin() {
               📋 Gestionar Ventas
             </button>
             <button 
-              onClick={() => { setMostrarGestionVentas(false); setMostrarGestionCajas(true); setMostrarReportes(false); }}
+              onClick={() => { setMostrarGestionVentas(false); setMostrarGestionCajas(true); setMostrarReportes(false); setMostrarGestionStock(false); }}
               style={{ 
                 background: mostrarGestionCajas ? 'linear-gradient(135deg, #fbbf24, #f59e0b)' : '#f1f5f9', 
                 color: mostrarGestionCajas ? '#1e293b' : '#64748b',
@@ -762,7 +1210,22 @@ export default function Admin() {
               💰 Gestionar Cajas
             </button>
             <button 
-              onClick={() => { setMostrarGestionVentas(false); setMostrarGestionCajas(false); setMostrarReportes(true); }}
+              onClick={() => { setMostrarGestionVentas(false); setMostrarGestionCajas(false); setMostrarReportes(false); setMostrarGestionStock(true); }}
+              style={{ 
+                background: mostrarGestionStock ? 'linear-gradient(135deg, #fbbf24, #f59e0b)' : '#f1f5f9', 
+                color: mostrarGestionStock ? '#1e293b' : '#64748b',
+                border: 'none', 
+                padding: '0.7rem 1.2rem', 
+                borderRadius: 10, 
+                fontWeight: 700, 
+                fontSize: '1rem', 
+                cursor: 'pointer' 
+              }}
+            >
+              📦 Gestionar Stock
+            </button>
+            <button 
+              onClick={() => { setMostrarGestionVentas(false); setMostrarGestionCajas(false); setMostrarReportes(true); setMostrarGestionStock(false); }}
               style={{ 
                 background: mostrarReportes ? 'linear-gradient(135deg, #fbbf24, #f59e0b)' : '#f1f5f9', 
                 color: mostrarReportes ? '#1e293b' : '#64748b',
@@ -1333,7 +1796,371 @@ export default function Admin() {
                 <div style={{ textAlign: 'center', padding: '2rem', color: '#64748b' }}>No hay métricas disponibles</div>
               )}
             </div>
-          ) : (
+          ) : mostrarGestionStock ? (
+            // Vista de gestión de stock
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+                <h2 style={{ color: '#1e293b', fontWeight: 800, margin: 0 }}>📦 Gestionar Stock</h2>
+                <button 
+                  onClick={cargarStock}
+                  disabled={loadingStock}
+                  style={{ 
+                    background: loadingStock ? '#f1f5f9' : 'linear-gradient(135deg, #0ea5e9, #3b82f6)', 
+                    color: loadingStock ? '#64748b' : '#fff',
+                    border: 'none', 
+                    padding: '0.7rem 1.2rem', 
+                    borderRadius: 10, 
+                    fontWeight: 700, 
+                    fontSize: '1rem', 
+                    cursor: loadingStock ? 'not-allowed' : 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8
+                  }}
+                >
+                  {loadingStock ? '🔄 Cargando...' : '🔄 Recargar'}
+                </button>
+              </div>
+              
+              {/* Alertas de bajo stock */}
+              {productosBajoStock.length > 0 && (
+                <div style={{ 
+                  background: '#fef2f2', 
+                  border: '1px solid #fecaca', 
+                  borderRadius: 12, 
+                  padding: '1rem', 
+                  marginBottom: 24 
+                }}>
+                  <div style={{ fontWeight: 700, color: '#dc2626', marginBottom: 8 }}>
+                    ⚠️ Productos con bajo stock ({productosBajoStock.length}):
+                  </div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                    {productosBajoStock.map(producto => (
+                      <span key={producto.id} style={{ 
+                        background: '#fecaca', 
+                        color: '#dc2626', 
+                        padding: '0.3rem 0.8rem', 
+                        borderRadius: 6, 
+                        fontSize: 12, 
+                        fontWeight: 600 
+                      }}>
+                        {producto.nombre} ({producto.stock})
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Filtros y búsqueda */}
+              <div style={{ 
+                background: '#f8fafc', 
+                borderRadius: 12, 
+                padding: '1.5rem', 
+                marginBottom: 24,
+                border: '1px solid #e2e8f0'
+              }}>
+                <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'flex-end', marginBottom: 24 }}>
+                  {/* Búsqueda */}
+                  <div style={{ flex: 1, minWidth: 200 }}>
+                    <label style={{ display: 'block', fontWeight: 600, color: '#64748b', marginBottom: 6 }}>
+                      🔍 Buscar producto
+                    </label>
+                    <input 
+                      type="text" 
+                      value={busquedaStock} 
+                      onChange={e => setBusquedaStock(e.target.value)} 
+                      placeholder="Nombre, categoría o descripción" 
+                      style={{ 
+                        width: '100%', 
+                        padding: '0.7rem', 
+                        borderRadius: 8, 
+                        border: '1px solid #cbd5e1', 
+                        fontSize: '1rem',
+                        background: 'white'
+                      }}
+                    />
+                  </div>
+
+                  {/* Categoría */}
+                  <div style={{ minWidth: 120 }}>
+                    <label style={{ display: 'block', fontWeight: 600, color: '#64748b', marginBottom: 6 }}>
+                      📂 Categoría
+                    </label>
+                    <select 
+                      value={categoriaFiltro} 
+                      onChange={e => setCategoriaFiltro(e.target.value)}
+                      style={{ 
+                        width: '100%', 
+                        padding: '0.7rem', 
+                        borderRadius: 8, 
+                        border: '1px solid #cbd5e1', 
+                        fontSize: '1rem',
+                        background: 'white'
+                      }}
+                    >
+                      <option value="">Todas</option>
+                      {[...new Set(productosStock.map(p => p.categoria))].map(categoria => (
+                        <option key={categoria} value={categoria}>{categoria}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Ordenamiento */}
+                  <div style={{ minWidth: 150 }}>
+                    <label style={{ display: 'block', fontWeight: 600, color: '#64748b', marginBottom: 6 }}>
+                      📊 Ordenar por stock
+                    </label>
+                    <select 
+                      value={ordenStock} 
+                      onChange={e => setOrdenStock(e.target.value)}
+                      style={{ 
+                        width: '100%', 
+                        padding: '0.7rem', 
+                        borderRadius: 8, 
+                        border: '1px solid #cbd5e1', 
+                        fontSize: '1rem',
+                        background: 'white'
+                      }}
+                    >
+                      <option value="asc">Menor a mayor</option>
+                      <option value="desc">Mayor a menor</option>
+                    </select>
+                  </div>
+                  
+                  {/* Botón mostrar/ocultar sin stock compacto */}
+                  <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', marginLeft: 6 }}>
+                    <label style={{ display: 'block', fontWeight: 600, color: '#64748b', marginBottom: 6, visibility: 'hidden' }}>
+                      🚫 Sin stock
+                    </label>
+                    <button 
+                      onClick={() => setMostrarSinStock(!mostrarSinStock)}
+                      style={{ 
+                        padding: '0.7rem', 
+                        borderRadius: 8, 
+                        border: '1px solid #cbd5e1',
+                        fontSize: '1.2rem',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        background: mostrarSinStock ? '#fca5a5' : 'white',
+                        color: mostrarSinStock ? '#dc2626' : '#6b7280',
+                        width: 44,
+                        height: 44,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        transition: 'all 0.2s ease'
+                      }}
+                      title={mostrarSinStock ? "Ocultar productos sin stock" : "Mostrar productos sin stock"}
+                    >
+                      🚫
+                    </button>
+                  </div>
+                </div>
+
+                {/* Edición masiva */}
+                <div style={{ 
+                  marginTop: 16, 
+                  paddingTop: 16, 
+                  borderTop: '1px solid #e2e8f0',
+                  display: 'flex',
+                  gap: 12,
+                  alignItems: 'center',
+                  flexWrap: 'wrap'
+                }}>
+                  
+                  <button 
+                    onClick={() => setMostrarEdicionMasiva(!mostrarEdicionMasiva)}
+                    style={{ 
+                      background: mostrarEdicionMasiva ? '#64748b' : 'linear-gradient(135deg, #0ea5e9, #3b82f6)', 
+                      color: '#fff', 
+                      border: 'none', 
+                      padding: '0.7rem 1.2rem', 
+                      borderRadius: 8, 
+                      fontWeight: 700, 
+                      fontSize: '0.9rem', 
+                      cursor: 'pointer',
+                      minWidth: 120
+                    }}
+                  >
+                    {mostrarEdicionMasiva ? '❌ Cancelar' : '📈 Edición Masiva'}
+                  </button>
+                  
+                  {mostrarEdicionMasiva && (
+                    <>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span style={{ color: '#64748b', fontSize: '0.9rem', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                          Edición masiva de precios
+                        </span>
+                        <input 
+                          type="number" 
+                          value={porcentajeMasivo} 
+                          onChange={e => {
+                            const value = e.target.value;
+                            // Limitar a 3 caracteres máximo (incluyendo signo -)
+                            if (value.length <= 3) {
+                              setPorcentajeMasivo(value);
+                            }
+                          }}
+                          placeholder="" 
+                          maxLength={3}
+                          min="-99"
+                          max="99"
+                          style={{ 
+                            width: '50px',
+                            padding: '0.5rem', 
+                            borderRadius: 6, 
+                            border: '1px solid #cbd5e1', 
+                            fontSize: '0.9rem',
+                            textAlign: 'center'
+                          }} 
+                        />
+                        <span style={{ color: '#64748b', fontSize: '0.9rem', fontWeight: 600 }}>% a</span>
+                      </div>
+
+                      {/* Selector de alcance simplificado */}
+                      <select 
+                        value={alcanceEdicionMasiva} 
+                        onChange={e => setAlcanceEdicionMasiva(e.target.value)}
+                        style={{ 
+                          padding: '0.5rem 0.8rem', 
+                          borderRadius: 6, 
+                          border: '1px solid #cbd5e1', 
+                          fontSize: '0.9rem',
+                          background: 'white',
+                          minWidth: 140
+                        }}
+                      >
+                        <option value="filtrados">Productos filtrados</option>
+                        <option value="todos">Todos los productos</option>
+                      </select>
+                      
+                      <button 
+                        onClick={aplicarEdicionMasiva}
+                        disabled={editandoMasivamente || !porcentajeMasivo}
+                        style={{ 
+                          background: editandoMasivamente || !porcentajeMasivo ? '#9ca3af' : 'linear-gradient(135deg, #059669, #10b981)', 
+                          color: '#fff', 
+                          border: 'none', 
+                          padding: '0.5rem 1rem', 
+                          borderRadius: 6, 
+                          fontWeight: 700, 
+                          fontSize: '0.9rem', 
+                          cursor: editandoMasivamente || !porcentajeMasivo ? 'not-allowed' : 'pointer',
+                          whiteSpace: 'nowrap'
+                        }}
+                      >
+                        {editandoMasivamente ? '⏳ Aplicando...' : '✅ Aplicar'}
+                      </button>
+                    </>
+                  )}
+                </div>
+                
+                {mostrarEdicionMasiva && (
+                  <div style={{ 
+                    marginTop: 12, 
+                    padding: '0.8rem', 
+                    background: '#fef3c7', 
+                    border: '1px solid #f59e0b', 
+                    borderRadius: 8,
+                    fontSize: '0.9rem',
+                    color: '#92400e'
+                  }}>
+                    <strong>💡 Información:</strong> La edición masiva aplicará el porcentaje según el alcance seleccionado y redondeará los precios inteligentemente.
+                    {alcanceEdicionMasiva === 'filtrados' && ' Se aplicará solo a los productos que coincidan con los filtros actuales.'}
+                    {alcanceEdicionMasiva === 'todos' && ' Se aplicará a TODOS los productos del sistema.'}
+                    {alcanceEdicionMasiva === 'filtrados' && categoriaFiltro && ` Para editar por categoría, usa el filtro de categoría arriba y selecciona "Productos filtrados".`}
+                  </div>
+                )}
+
+                {/* Listado de productos */}
+                {loadingStock ? (
+                  <div style={{ textAlign: 'center', padding: '2rem', color: '#64748b', marginTop: 24 }}>Cargando productos...</div>
+                ) : errorStock ? (
+                  <div style={{ color: '#dc2626', textAlign: 'center', padding: '2rem', marginTop: 24 }}>{errorStock}</div>
+                ) : productosStock.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '2rem', color: '#64748b', marginTop: 24 }}>No hay productos registrados</div>
+                ) : (
+                  <div style={{ maxHeight: '70vh', overflowY: 'auto', marginTop: 24 }}>
+                    {obtenerProductosFiltrados().map((producto, index) => (
+                      <div key={producto.id} style={{ 
+                        border: '1px solid #e2e8f0', 
+                        borderRadius: 12, 
+                        padding: '1rem', 
+                        marginBottom: 12,
+                        background: producto.stock < 5 ? '#fef2f2' : '#f8fafc',
+                        borderLeft: producto.stock < 5 ? '4px solid #dc2626' : '4px solid #e2e8f0'
+                      }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontWeight: 700, fontSize: 16, color: '#1e293b', marginBottom: 2 }}>
+                              {producto.nombre}
+                            </div>
+                            <div style={{ color: '#64748b', fontSize: 13, marginBottom: 2 }}>
+                              📂 {producto.categoria || 'Sin categoría'}
+                            </div>
+                            {producto.descripcion && (
+                              <div style={{ color: '#64748b', fontSize: 12, fontStyle: 'italic' }}>
+                                {producto.descripcion}
+                              </div>
+                            )}
+                          </div>
+                          <div style={{ textAlign: 'right', marginLeft: 16, display: 'flex', alignItems: 'center', gap: 12 }}>
+                            <div style={{ textAlign: 'right' }}>
+                              <div style={{ fontWeight: 800, fontSize: 18, color: '#059669', marginBottom: 2 }}>
+                                {formatearPrecio(producto.precio)}
+                              </div>
+                              <div style={{ 
+                                fontSize: 13, 
+                                fontWeight: 600,
+                                color: producto.stock < 5 ? '#dc2626' : producto.stock < 10 ? '#f59e0b' : '#059669',
+                                background: producto.stock < 5 ? '#fecaca' : producto.stock < 10 ? '#fef3c7' : '#dcfce7',
+                                padding: '0.2rem 0.6rem',
+                                borderRadius: 6,
+                                display: 'inline-block'
+                              }}>
+                                📦 {producto.stock} unidades
+                                {producto.stock < 5 && ' ⚠️'}
+                              </div>
+                            </div>
+                            
+                            {/* Botón de editar compacto */}
+                            <button 
+                              onClick={() => seleccionarProductoStock(producto)}
+                              style={{ 
+                                background: 'linear-gradient(135deg, #0ea5e9, #3b82f6)', 
+                                color: '#fff', 
+                                border: 'none', 
+                                padding: '0.5rem', 
+                                borderRadius: 8, 
+                                fontWeight: 700, 
+                                fontSize: '1rem', 
+                                cursor: 'pointer',
+                                width: 40,
+                                height: 40,
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center'
+                              }}
+                              title="Editar producto"
+                            >
+                              ✏️
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                    
+                    {/* Mensaje si no hay resultados */}
+                    {obtenerProductosFiltrados().length === 0 && (
+                      <div style={{ textAlign: 'center', padding: '2rem', color: '#64748b' }}>
+                        No se encontraron productos con los filtros aplicados
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+              ) : (
             // Vista de nueva venta
             caja && caja.abierta ? (
               <>
@@ -1728,7 +2555,7 @@ export default function Admin() {
                     💰 Total pagos: {formatearPrecio(totalPago)} | 🛒 Total venta: {formatearPrecio(totalVenta)}
                     {totalPago !== totalVenta && totalVenta > 0 && (
                       <span style={{ marginLeft: 8 }}>
-                        {totalPago > totalVenta ? '❌ Excede el total' : '⚠️ Falta completar'}
+                        {totalPago > totalVenta ? '❌ Excede el total' : `⚠️ Falta ${formatearPrecio(totalVenta - totalPago)}`}
                       </span>
                     )}
                   </div>
@@ -1871,6 +2698,228 @@ export default function Admin() {
                 }}
               >
                 Confirmar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de edición de stock */}
+      {productoSeleccionadoStock && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0,0,0,0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1001
+        }}>
+          <div style={{
+            background: 'white',
+            borderRadius: 16,
+            padding: '2rem',
+            maxWidth: 600,
+            width: '90%',
+            maxHeight: '90vh',
+            overflowY: 'auto',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.2)'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+              <h3 style={{ color: '#1e293b', fontWeight: 800, fontSize: '1.5rem' }}>
+                ✏️ Editar Producto: {productoSeleccionadoStock.nombre}
+              </h3>
+              <button
+                onClick={() => setProductoSeleccionadoStock(null)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  fontSize: '1.5rem',
+                  cursor: 'pointer',
+                  color: '#64748b',
+                  fontWeight: 'bold'
+                }}
+              >
+                ×
+              </button>
+            </div>
+
+            {/* Información actual del producto */}
+            <div style={{ 
+              background: '#f8fafc', 
+              padding: '1rem', 
+              borderRadius: 12, 
+              marginBottom: 24,
+              border: '1px solid #e2e8f0'
+            }}>
+              <div style={{ fontWeight: 600, color: '#64748b', marginBottom: 8 }}>📊 Estado Actual:</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                <div>
+                  <span style={{ fontWeight: 600, color: '#1e293b' }}>Stock actual:</span>
+                  <span style={{ 
+                    marginLeft: 8, 
+                    fontWeight: 700, 
+                    color: productoSeleccionadoStock.stock < 5 ? '#dc2626' : '#059669',
+                    fontSize: '1.1rem'
+                  }}>
+                    {productoSeleccionadoStock.stock} unidades
+                  </span>
+                </div>
+                <div>
+                  <span style={{ fontWeight: 600, color: '#1e293b' }}>Precio actual:</span>
+                  <span style={{ marginLeft: 8, fontWeight: 700, color: '#059669', fontSize: '1.1rem' }}>
+                    {formatearPrecio(productoSeleccionadoStock.precio)}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Formulario de edición */}
+            <div style={{ marginBottom: 24 }}>
+              <h4 style={{ color: '#1e293b', fontWeight: 700, marginBottom: 16 }}>🔧 Modificar Datos:</h4>
+              
+              {/* Agregar stock */}
+              <div style={{ marginBottom: 20 }}>
+                <label style={{ fontWeight: 600, color: '#64748b', marginBottom: 8, display: 'block' }}>
+                  ➕ Agregar Stock:
+                </label>
+                <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                  <input
+                    type="number"
+                    min="1"
+                    value={cantidadAgregar}
+                    onChange={e => setCantidadAgregar(e.target.value)}
+                    placeholder="Cantidad a agregar"
+                    style={{ 
+                      flex: 1,
+                      padding: '0.7rem', 
+                      borderRadius: 8, 
+                      border: '1px solid #cbd5e1', 
+                      fontSize: '1rem' 
+                    }}
+                  />
+                  <button
+                    onClick={agregarStock}
+                    disabled={!cantidadAgregar || Number(cantidadAgregar) <= 0 || editandoStock}
+                    style={{
+                      background: (!cantidadAgregar || Number(cantidadAgregar) <= 0 || editandoStock) 
+                        ? '#9ca3af' 
+                        : 'linear-gradient(135deg, #059669, #10b981)',
+                      color: 'white',
+                      border: 'none',
+                      padding: '0.7rem 1.2rem',
+                      borderRadius: 8,
+                      fontWeight: 700,
+                      fontSize: '1rem',
+                      cursor: (!cantidadAgregar || Number(cantidadAgregar) <= 0 || editandoStock) ? 'not-allowed' : 'pointer'
+                    }}
+                  >
+                    {editandoStock ? 'Agregando...' : '➕ Agregar'}
+                  </button>
+                </div>
+              </div>
+
+              {/* Modificar precio */}
+              <div style={{ marginBottom: 20 }}>
+                <label style={{ fontWeight: 600, color: '#64748b', marginBottom: 8, display: 'block' }}>
+                  💰 Precio Unitario:
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={nuevoPrecio}
+                  onChange={e => setNuevoPrecio(e.target.value)}
+                  placeholder="Nuevo precio"
+                  style={{ 
+                    width: '100%',
+                    padding: '0.7rem', 
+                    borderRadius: 8, 
+                    border: '1px solid #cbd5e1', 
+                    fontSize: '1rem' 
+                  }}
+                />
+              </div>
+
+              {/* Modificar categoría */}
+              <div style={{ marginBottom: 20 }}>
+                <label style={{ fontWeight: 600, color: '#64748b', marginBottom: 8, display: 'block' }}>
+                  📂 Categoría:
+                </label>
+                <input
+                  type="text"
+                  value={nuevaCategoria}
+                  onChange={e => setNuevaCategoria(e.target.value)}
+                  placeholder="Nueva categoría"
+                  style={{ 
+                    width: '100%',
+                    padding: '0.7rem', 
+                    borderRadius: 8, 
+                    border: '1px solid #cbd5e1', 
+                    fontSize: '1rem' 
+                  }}
+                />
+              </div>
+
+              {/* Modificar descripción */}
+              <div style={{ marginBottom: 20 }}>
+                <label style={{ fontWeight: 600, color: '#64748b', marginBottom: 8, display: 'block' }}>
+                  📝 Descripción:
+                </label>
+                <textarea
+                  value={nuevaDescripcion}
+                  onChange={e => setNuevaDescripcion(e.target.value)}
+                  placeholder="Nueva descripción"
+                  rows="3"
+                  style={{ 
+                    width: '100%',
+                    padding: '0.7rem', 
+                    borderRadius: 8, 
+                    border: '1px solid #cbd5e1', 
+                    fontSize: '1rem',
+                    resize: 'vertical'
+                  }}
+                />
+              </div>
+            </div>
+
+            {/* Botones de acción */}
+            <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setProductoSeleccionadoStock(null)}
+                style={{
+                  background: '#f1f5f9',
+                  color: '#64748b',
+                  border: 'none',
+                  padding: '0.8rem 1.5rem',
+                  borderRadius: 10,
+                  fontWeight: 700,
+                  fontSize: '1rem',
+                  cursor: 'pointer'
+                }}
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={actualizarProductoStock}
+                disabled={editandoStock}
+                style={{
+                  background: editandoStock 
+                    ? '#9ca3af' 
+                    : 'linear-gradient(135deg, #0ea5e9, #3b82f6)',
+                  color: 'white',
+                  border: 'none',
+                  padding: '0.8rem 1.5rem',
+                  borderRadius: 10,
+                  fontWeight: 700,
+                  fontSize: '1rem',
+                  cursor: editandoStock ? 'not-allowed' : 'pointer'
+                }}
+              >
+                {editandoStock ? 'Guardando...' : '💾 Guardar Cambios'}
               </button>
             </div>
           </div>
