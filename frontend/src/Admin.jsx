@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import whatsappLogo from './assets/whatsapp-logo.png';
 
 export default function Admin() {
   const [usuario, setUsuario] = useState('');
@@ -58,11 +59,24 @@ export default function Admin() {
   const [editandoStock, setEditandoStock] = useState(false);
   const [busquedaStock, setBusquedaStock] = useState('');
   const [categoriaFiltro, setCategoriaFiltro] = useState('');
-  const [ordenStock, setOrdenStock] = useState('asc');
+  const [ordenStock, setOrdenStock] = useState('none');
   const [mostrarSinStock, setMostrarSinStock] = useState(true);
   const [mostrarGestionStock, setMostrarGestionStock] = useState(false);
 
+  // --- Estados para gestión de empleados ---
+  const [empleados, setEmpleados] = useState([]);
+  const [loadingEmpleados, setLoadingEmpleados] = useState(false);
+  const [errorEmpleados, setErrorEmpleados] = useState('');
+  const [mostrarGestionEmpleados, setMostrarGestionEmpleados] = useState(false);
+  const [nuevoEmpleado, setNuevoEmpleado] = useState('');
+  const [editandoEmpleado, setEditandoEmpleado] = useState(null);
+  const [empleadoEditando, setEmpleadoEditando] = useState('');
 
+  // --- Estados para presupuestos ---
+  const [generandoPresupuesto, setGenerandoPresupuesto] = useState(false);
+  const [mostrarModalWhatsApp, setMostrarModalWhatsApp] = useState(false);
+  const [numeroWhatsApp, setNumeroWhatsApp] = useState('');
+  const [presupuestoGenerado, setPresupuestoGenerado] = useState(null);
   
   // --- Estados para edición masiva de precios ---
   const [mostrarEdicionMasiva, setMostrarEdicionMasiva] = useState(false);
@@ -79,6 +93,7 @@ export default function Admin() {
   const [loadingReporteVentas, setLoadingReporteVentas] = useState(false);
   const [productosVendidos, setProductosVendidos] = useState([]);
   const [loadingProductosVendidos, setLoadingProductosVendidos] = useState(false);
+  const [errorProductosVendidos, setErrorProductosVendidos] = useState('');
   
   // --- Estados para filtros de reportes ---
   const [filtroMes, setFiltroMes] = useState(String(new Date().getMonth() + 1)); // Mes actual (1-12)
@@ -97,6 +112,8 @@ export default function Admin() {
   // --- Estados para notificaciones y modales ---
   const [notificacion, setNotificacion] = useState(null);
   const [modalConfirmacion, setModalConfirmacion] = useState(null);
+
+  const cantidadAgregarRef = useRef(null);
 
   // --- Login persistente con localStorage ---
   useEffect(() => {
@@ -270,10 +287,8 @@ export default function Admin() {
         return;
       }
       setCarrito(carrito.map(p => p.id === productoSeleccionado.id ? { ...p, cantidad: nuevaCantidad } : p));
-      mostrarNotificacion(`✅ ${productoSeleccionado.nombre} actualizado en el carrito (${nuevaCantidad} unidades)`, 'success');
     } else {
       setCarrito([...carrito, { ...productoSeleccionado, cantidad: cantidadNum }]);
-      mostrarNotificacion(`✅ ${productoSeleccionado.nombre} agregado al carrito (${cantidadNum} unidades)`, 'success');
     }
     setProductoSeleccionado(null);
     setCantidad('1');
@@ -285,62 +300,65 @@ export default function Admin() {
   };
 
   const handleGenerarVenta = async () => {
-    if (carrito.length === 0 || totalPago !== totalVenta || totalPago > totalVenta) return;
-    
-    console.log('=== GENERANDO VENTA ===');
-    console.log('Carrito:', carrito);
-    console.log('Total venta:', totalVenta);
-    console.log('Forma de pago:', formaPago);
-    
-    setLoadingVenta(true);
+    if (carrito.length === 0) {
+      mostrarNotificacion('El carrito está vacío', 'error');
+      return;
+    }
+
+    if (!metodoPago) {
+      mostrarNotificacion('Selecciona un método de pago', 'error');
+      return;
+    }
+
+    setGenerandoVenta(true);
     try {
-      const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3001') + '/api';
       const ventaData = {
-        productos: carrito.map(p => p.nombre),
-        cantidades: carrito.map(p => p.cantidad),
-        total: totalVenta,
-        efectivo: Number(formaPago.efectivo) || 0,
-        transferencia: Number(formaPago.transferencia) || 0,
-        pos: Number(formaPago.pos) || 0,
-        cliente,
-        observaciones
+        productos: carrito.map(item => ({
+          id: item.id,
+          nombre: item.nombre,
+          cantidad: item.cantidad,
+          precio: item.precio,
+          subtotal: item.subtotal
+        })),
+        total: totalCarrito,
+        metodoPago,
+        empleado: empleadoVenta || 'Sin empleado',
+        fecha: new Date().toISOString()
       };
-      
-      console.log('Enviando venta al servidor:', ventaData);
-      
-      const res = await fetchWithDelay(`${API_URL}/ventas`, {
+
+      const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3001') + '/api';
+      const res = await fetch(`${API_URL}/ventas`, {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(ventaData)
       });
-      
-      console.log('Respuesta del servidor:', res.status, res.statusText);
-      
+
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({ error: 'Error desconocido' }));
+        throw new Error(errorData.error || `Error ${res.status}`);
+      }
+
       const result = await res.json();
-      console.log('Venta registrada exitosamente:', result);
+
+      mostrarNotificacion(`✅ Venta registrada exitosamente - Total: $${formatearPrecio(totalCarrito)}`, 'success');
       
-      // Mostrar notificación de éxito
-      mostrarNotificacion('✅ Venta registrada correctamente', 'success');
+      // Limpiar carrito
+      setCarrito([]);
+      setTotalCarrito(0);
+      setMetodoPago('');
+      setEmpleadoVenta('');
       
       // Recargar productos para actualizar stock
-      console.log('Recargando productos...');
       await cargarProductos();
       
-      // Limpiar formulario
-      setCarrito([]);
-      setFormaPago({ efectivo: '', transferencia: '', pos: '' });
-      setCliente('');
-      setObservaciones('');
-      
       // Recargar estado de caja
-      console.log('Recargando estado de caja...');
       await cargarCaja();
       
-      console.log('✅ Venta completada exitosamente');
     } catch (err) {
-      console.error('❌ Error al registrar venta:', err);
-      mostrarNotificacion(`❌ Error al registrar venta: ${err.message}`, 'error');
+      console.error('Error al generar venta:', err);
+      mostrarNotificacion(`❌ Error: ${err.message}`, 'error');
     } finally {
-      setLoadingVenta(false);
+      setGenerandoVenta(false);
     }
   };
 
@@ -355,22 +373,30 @@ export default function Admin() {
 
   // --- Consultar estado de caja al iniciar sesión y tras cada venta ---
   const cargarCaja = async () => {
-    console.log('=== CARGANDO ESTADO DE CAJA ===');
     setLoadingCaja(true);
+    setErrorCaja('');
     try {
       const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3001') + '/api';
-      console.log('Consultando estado de caja en:', `${API_URL}/caja/estado`);
-      
       const res = await fetchWithDelay(`${API_URL}/caja/estado`);
-      console.log('Respuesta del servidor:', res.status, res.statusText);
+      
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({ error: 'Error desconocido' }));
+        throw new Error(errorData.error || `Error ${res.status}`);
+      }
       
       const data = await res.json();
-      console.log('Estado de caja recibido:', data);
       
-      setCaja(data);
-      console.log('✅ Estado de caja actualizado en frontend');
+      if (data.success) {
+        setCaja(data.caja);
+        if (data.caja && data.caja.abierta && data.caja.empleado) {
+          setEmpleadoCaja(data.caja.empleado);
+        }
+      } else {
+        setCaja(null);
+      }
     } catch (err) {
-      console.error('❌ Error al cargar estado de caja:', err);
+      console.error('Error al cargar caja:', err);
+      setErrorCaja(err.message);
       setCaja(null);
     } finally {
       setLoadingCaja(false);
@@ -429,29 +455,254 @@ export default function Admin() {
     }
   };
 
-  // --- Cargar empleados desde la API ---
-  const [empleados, setEmpleados] = useState([]);
-  useEffect(() => {
-    if (!logueado) return;
-    const cargarEmpleados = async () => {
-      try {
-        const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3001') + '/api';
-        const res = await fetchWithDelay(`${API_URL}/empleados`);
-        const data = await res.json();
-        // Asegurar que data sea un array
-        if (Array.isArray(data)) {
-          setEmpleados(data);
-        } else {
-          console.warn('Empleados no es un array:', data);
-          setEmpleados([]);
-        }
-      } catch (err) {
-        console.error('Error al cargar empleados:', err);
+  // --- Funciones para gestión de empleados ---
+  const cargarEmpleados = async () => {
+    setLoadingEmpleados(true);
+    setErrorEmpleados('');
+    try {
+      const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3001') + '/api';
+      const res = await fetchWithDelay(`${API_URL}/empleados`);
+      const data = await res.json();
+      if (Array.isArray(data)) {
+        setEmpleados(data);
+      } else {
+        console.warn('Empleados no es un array:', data);
         setEmpleados([]);
       }
-    };
-    cargarEmpleados();
+    } catch (err) {
+      console.error('Error al cargar empleados:', err);
+      setErrorEmpleados('No se pudieron cargar los empleados');
+      setEmpleados([]);
+    } finally {
+      setLoadingEmpleados(false);
+    }
+  };
+
+  const agregarEmpleado = async () => {
+    if (!nuevoEmpleado.trim()) {
+      mostrarNotificacion('El nombre del empleado es requerido', 'error');
+      return;
+    }
+
+    try {
+      const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3001') + '/api';
+      const res = await fetch(`${API_URL}/empleados`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nombre: nuevoEmpleado.trim() })
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error || 'Error al agregar empleado');
+      }
+
+      const result = await res.json();
+      mostrarNotificacion(`✅ Empleado "${nuevoEmpleado}" agregado correctamente`, 'success');
+      setNuevoEmpleado('');
+      await cargarEmpleados();
+    } catch (err) {
+      console.error('Error al agregar empleado:', err);
+      mostrarNotificacion(`❌ Error: ${err.message}`, 'error');
+    }
+  };
+
+  const editarEmpleado = async () => {
+    if (!empleadoEditando.trim()) {
+      mostrarNotificacion('El nombre del empleado es requerido', 'error');
+      return;
+    }
+
+    try {
+      const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3001') + '/api';
+      const res = await fetch(`${API_URL}/empleados/${editandoEmpleado.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nombre: empleadoEditando.trim() })
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error || 'Error al actualizar empleado');
+      }
+
+      const result = await res.json();
+      mostrarNotificacion(`✅ Empleado actualizado correctamente`, 'success');
+      setEditandoEmpleado(null);
+      setEmpleadoEditando('');
+      await cargarEmpleados();
+    } catch (err) {
+      console.error('Error al actualizar empleado:', err);
+      mostrarNotificacion(`❌ Error: ${err.message}`, 'error');
+    }
+  };
+
+  const iniciarEdicionEmpleado = (empleado) => {
+    setEditandoEmpleado(empleado);
+    setEmpleadoEditando(empleado.nombre);
+  };
+
+  const cancelarEdicionEmpleado = () => {
+    setEditandoEmpleado(null);
+    setEmpleadoEditando('');
+  };
+
+  useEffect(() => {
+    if (logueado) {
+      cargarEmpleados();
+    }
   }, [logueado]);
+
+  useEffect(() => {
+    if (mostrarGestionEmpleados) {
+      cargarEmpleados();
+    }
+  }, [mostrarGestionEmpleados]);
+
+  // --- Funciones para generación de presupuestos ---
+  const generarPresupuesto = async () => {
+    if (carrito.length === 0) {
+      mostrarNotificacion('No hay productos en el carrito para generar presupuesto', 'error');
+      return;
+    }
+
+    setGenerandoPresupuesto(true);
+    try {
+      const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3001') + '/api';
+      const res = await fetch(`${API_URL}/presupuesto/generar`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          productos: carrito,
+          cliente: cliente || '',
+          observaciones: observaciones || '',
+          empleado: empleadoCaja || '',
+        })
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error || 'Error al generar presupuesto');
+      }
+
+      // Crear blob del PDF y descargarlo
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `presupuesto_${Date.now()}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+
+      mostrarNotificacion('✅ Presupuesto generado y descargado correctamente', 'success');
+    } catch (err) {
+      console.error('Error al generar presupuesto:', err);
+      mostrarNotificacion(`❌ Error: ${err.message}`, 'error');
+    } finally {
+      setGenerandoPresupuesto(false);
+    }
+  };
+
+  const enviarWhatsApp = () => {
+    if (!numeroWhatsApp.trim()) {
+      mostrarNotificacion('Por favor ingresa un número de WhatsApp', 'error');
+      return;
+    }
+
+    // Limpiar número (solo números)
+    const numeroLimpio = numeroWhatsApp.replace(/\D/g, '');
+    
+    // Agregar código de país si no tiene (asumiendo Argentina +54)
+    const numeroCompleto = numeroLimpio.startsWith('54') ? numeroLimpio : `54${numeroLimpio}`;
+    
+    // Crear mensaje con emojis más compatibles
+    const mensaje = 
+    `Hola! 👋 Te envío el presupuesto solicitado.\n\n` +
+    `*📄 PRESUPUESTO ALNORTEGROW*\n` +
+    `💰 Total: $${presupuestoGenerado.total.toLocaleString('es-AR')}\n\n` +
+    `📎 Adjunto el PDF con todos los detalles.\n\n` +
+    `🙏 ¡Gracias por tu interés!`;
+
+    const mensajeCodificado = encodeURIComponent(mensaje)
+  
+
+// Construimos la URL final
+const urlWhatsApp = `https://api.whatsapp.com/send?phone=${numeroCompleto}&text=${mensajeCodificado}`;
+window.open(urlWhatsApp, '_blank');
+    
+    // Cerrar modal
+    setMostrarModalWhatsApp(false);
+    setNumeroWhatsApp('');
+    setPresupuestoGenerado(null);
+    
+    mostrarNotificacion('✅ WhatsApp abierto correctamente', 'success');
+  };
+
+  const generarPresupuestoYWhatsApp = async () => {
+    if (carrito.length === 0) {
+      mostrarNotificacion('No hay productos en el carrito para generar presupuesto', 'error');
+      return;
+    }
+
+    setGenerandoPresupuesto(true);
+    try {
+      const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3001') + '/api';
+      const res = await fetch(`${API_URL}/presupuesto/generar`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          productos: carrito,
+          cliente: cliente || '',
+          observaciones: observaciones || '',
+          empleado: empleadoCaja || ''
+        })
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error || 'Error al generar presupuesto');
+      }
+
+      // Crear blob del PDF y descargarlo
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `presupuesto_${Date.now()}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+
+      // Guardar información del presupuesto generado
+      const totalPresupuesto = carrito.reduce((acc, p) => {
+        const precioFinal = p.oferta && calcularPrecioOferta(p.precio, p.oferta) !== null 
+          ? calcularPrecioOferta(p.precio, p.oferta) 
+          : p.precio;
+        return acc + precioFinal * p.cantidad;
+      }, 0);
+
+      setPresupuestoGenerado({
+        productos: carrito,
+        total: totalPresupuesto,
+        cliente: cliente || '',
+        empleado: empleadoCaja || ''
+      });
+
+      // Mostrar modal de WhatsApp
+      setMostrarModalWhatsApp(true);
+      setNumeroWhatsApp('');
+
+      mostrarNotificacion('✅ Presupuesto generado y descargado correctamente', 'success');
+    } catch (err) {
+      console.error('Error al generar presupuesto:', err);
+      mostrarNotificacion(`❌ Error: ${err.message}`, 'error');
+    } finally {
+      setGenerandoPresupuesto(false);
+    }
+  };
 
   // --- Funciones para gestión de ventas ---
   const cargarVentas = async () => {
@@ -463,11 +714,8 @@ export default function Admin() {
         cache: 'no-cache'
       });
       const data = await res.json();
-      console.log('Ventas cargadas:', data.length, 'ventas');
-      console.log('Datos de ventas:', JSON.stringify(data, null, 2));
       setVentas(data);
     } catch (err) {
-        console.log(err)
       console.error('Error completo al cargar ventas:', err);
       setErrorVentas(`No se pudieron cargar las ventas: ${err.message}`);
     } finally {
@@ -494,12 +742,10 @@ export default function Admin() {
           }
           
           const result = await res.json();
-          console.log('Venta eliminada exitosamente:', result);
           mostrarNotificacion(`✅ Venta eliminada correctamente. Total eliminado: $${result.totalEliminado}`, 'success');
           
           // Recargar ventas, productos (para actualizar stock) y caja
           if (mostrarGestionVentas) {
-            console.log('Recargando ventas después de eliminar...');
             await cargarVentas();
           }
           await cargarProductos(); // Actualizar stock después de eliminar venta
@@ -536,7 +782,6 @@ export default function Admin() {
         throw new Error(`Error ${res.status}: ${errorText}`);
       }
       const data = await res.json();
-      console.log('Cajas cargadas:', data.length, 'cajas');
       setCajas(data);
     } catch (err) {
       console.error('Error completo al cargar cajas:', err);
@@ -565,12 +810,10 @@ export default function Admin() {
           }
           
           const result = await res.json();
-          console.log('Caja eliminada exitosamente:', result);
           mostrarNotificacion(`✅ Caja eliminada correctamente. Total: $${result.cajaEliminada.total}`, 'success');
           
           // Recargar cajas
           if (mostrarGestionCajas) {
-            console.log('Recargando cajas después de eliminar...');
             await cargarCajas();
           }
         } catch (err) {
@@ -643,7 +886,6 @@ export default function Admin() {
         throw new Error(`Error ${res.status}: ${errorText}`);
       }
       const data = await res.json();
-      console.log('Productos vendidos cargados:', data.length, 'productos');
       setProductosVendidos(data);
     } catch (err) {
       console.error('Error completo al cargar productos vendidos:', err);
@@ -655,24 +897,23 @@ export default function Admin() {
 
   // --- Funciones para gestión de stock ---
   const cargarStock = async () => {
-    console.log('=== CARGANDO PRODUCTOS DE STOCK ===');
     setLoadingStock(true);
     setErrorStock('');
     try {
       const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3001') + '/api';
+      
       const res = await fetchWithDelay(`${API_URL}/stock?t=${Date.now()}`, {
         cache: 'no-cache'
       });
       
       const data = await res.json();
-      console.log('Productos de stock cargados:', data.length, 'productos');
-      console.log('Datos actualizados:', data.map(p => ({ id: p.id, nombre: p.nombre, precio: p.precio })));
       
       // Forzar actualización del estado
       setProductosStock(data);
       
       // También cargar productos con bajo stock
       await cargarProductosBajoStock();
+      
     } catch (err) {
       console.error('Error completo al cargar stock:', err);
       setErrorStock(`No se pudieron cargar los productos de stock: ${err.message}`);
@@ -684,12 +925,12 @@ export default function Admin() {
   const cargarProductosBajoStock = async () => {
     try {
       const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3001') + '/api';
+      
       const res = await fetchWithDelay(`${API_URL}/stock/bajo-stock?t=${Date.now()}`, {
         cache: 'no-cache'
       });
       
       const data = await res.json();
-      console.log('Productos con bajo stock:', data.length, 'productos');
       setProductosBajoStock(data);
     } catch (err) {
       console.error('Error al cargar productos con bajo stock:', err);
@@ -697,7 +938,6 @@ export default function Admin() {
   };
 
   const seleccionarProductoStock = (producto) => {
-    console.log('Producto seleccionado para edición:', producto);
     setProductoSeleccionadoStock(producto);
     setNuevoPrecio(String(producto.precio));
     setNuevaCategoria(producto.categoria);
@@ -709,7 +949,6 @@ export default function Admin() {
   const actualizarProductoStock = async () => {
     if (!productoSeleccionadoStock) return;
     
-    console.log('=== ACTUALIZANDO PRODUCTO DE STOCK ===');
     setEditandoStock(true);
     
     try {
@@ -731,10 +970,8 @@ export default function Admin() {
         return;
       }
       
-      console.log('Datos a actualizar:', updateData);
-      
-      // Actualizar producto - usar el index correcto (producto.id - 1)
-      const res = await fetch(`${API_URL}/stock/${productoSeleccionadoStock.id - 1}`, {
+      // Actualizar producto - usar el ID correcto
+      const res = await fetch(`${API_URL}/stock/${productoSeleccionadoStock.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updateData)
@@ -746,11 +983,32 @@ export default function Admin() {
       }
       
       const result = await res.json();
-      console.log('Producto actualizado exitosamente:', result);
-      mostrarNotificacion('✅ Producto actualizado correctamente', 'success');
       
-      // Recargar stock
-      await cargarStock();
+      // Crear mensaje específico según qué se actualizó
+      const cambios = [];
+      if (updateData.precio !== undefined) cambios.push(`precio: $${formatearPrecio(updateData.precio)}`);
+      if (updateData.categoria !== undefined) cambios.push(`categoría: ${updateData.categoria}`);
+      if (updateData.descripcion !== undefined) cambios.push(`descripción actualizada`);
+      
+      const mensaje = cambios.length > 0 
+        ? `✅ "${productoSeleccionadoStock.nombre}" actualizado: ${cambios.join(', ')}`
+        : `✅ "${productoSeleccionadoStock.nombre}" actualizado correctamente`;
+      
+      mostrarNotificacion(mensaje, 'success');
+      
+      // Actualizar el estado local en lugar de recargar todo el stock
+      setProductosStock(prevStock => 
+        prevStock.map(producto => 
+          producto.id === productoSeleccionadoStock.id 
+            ? {
+                ...producto,
+                precio: updateData.precio !== undefined ? updateData.precio : producto.precio,
+                categoria: updateData.categoria !== undefined ? updateData.categoria : producto.categoria,
+                descripcion: updateData.descripcion !== undefined ? updateData.descripcion : producto.descripcion
+              }
+            : producto
+        )
+      );
       
       // Limpiar formulario
       setProductoSeleccionadoStock(null);
@@ -774,24 +1032,44 @@ export default function Admin() {
     setEditandoStock(true);
     try {
       const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3001') + '/api';
-      const res = await fetch(`${API_URL}/stock/${productoSeleccionadoStock.id - 1}/agregar`, {
+      const url = `${API_URL}/stock/${productoSeleccionadoStock.id}/agregar`;
+      const body = { cantidad: Number(cantidadAgregar) };
+      
+      const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cantidad: Number(cantidadAgregar) })
+        body: JSON.stringify(body)
       });
       
       const data = await res.json();
       
-      if (data.ok) {
-        mostrarNotificacion(`✅ ${data.message}`, 'success');
+      if (data.success) {
+        const nuevoStock = productoSeleccionadoStock.stock + Number(cantidadAgregar);
+        mostrarNotificacion(`✅ Stock de "${productoSeleccionadoStock.nombre}" actualizado: ${productoSeleccionadoStock.stock} + ${cantidadAgregar} = ${nuevoStock} unidades`, 'success');
+        
         setCantidadAgregar('');
         setProductoSeleccionadoStock(null);
-        cargarStock();
-        cargarProductosBajoStock();
+        
+        // Actualizar estado local en lugar de recargar todo
+        setProductosStock(prevStock => 
+          prevStock.map(producto => 
+            producto.id === productoSeleccionadoStock.id 
+              ? { ...producto, stock: producto.stock + Number(cantidadAgregar) }
+              : producto
+          )
+        );
+        
+        // Intentar cargar productos con bajo stock sin bloquear
+        try {
+          await cargarProductosBajoStock();
+        } catch (err) {
+          console.error('Error al cargar productos con bajo stock:', err);
+        }
       } else {
         mostrarNotificacion(data.error || 'Error al agregar stock', 'error');
       }
     } catch (err) {
+      console.error('Error de conexión:', err);
       mostrarNotificacion('Error de conexión', 'error');
     } finally {
       setEditandoStock(false);
@@ -826,13 +1104,15 @@ export default function Admin() {
     }
     
     // Ordenar por stock
-    productosFiltrados.sort((a, b) => {
-      if (ordenStock === 'asc') {
-        return a.stock - b.stock;
-      } else {
-        return b.stock - a.stock;
-      }
-    });
+    if (ordenStock !== 'none') {
+      productosFiltrados.sort((a, b) => {
+        if (ordenStock === 'asc') {
+          return a.stock - b.stock;
+        } else {
+          return b.stock - a.stock;
+        }
+      });
+    }
     
     return productosFiltrados;
   };
@@ -929,9 +1209,7 @@ export default function Admin() {
     try {
       const productosAActualizar = obtenerProductosParaEdicionMasiva();
 
-      console.log(`📋 Productos a actualizar: ${productosAActualizar.length}`);
       productosAActualizar.forEach((p, index) => {
-        console.log(`  ${index + 1}. ID: ${p.id}, Nombre: ${p.nombre}, Precio: ${p.precio}`);
       });
 
       if (productosAActualizar.length === 0) {
@@ -951,14 +1229,11 @@ export default function Admin() {
           // Aplicar redondeo inteligente
           const precioRedondeado = redondearPrecioInteligente(nuevoPrecio);
           
-          console.log(`🔄 Actualizando producto ${producto.id} (${producto.nombre}): ${producto.precio} → ${precioRedondeado}`);
-          console.log(`📊 Datos del producto: ID=${producto.id}, Fila=${producto.fila}, Index=${producto.id - 1}`);
           
-          // Actualizar producto - usar el index correcto (producto.id - 1)
+          // Actualizar producto - usar el ID correcto
           const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3001') + '/api';
-          console.log(`🌐 URL de la petición: ${API_URL}/stock/${producto.id - 1}`);
           
-          const res = await fetch(`${API_URL}/stock/${producto.id - 1}`, {
+          const res = await fetch(`${API_URL}/stock/${producto.id}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ precio: precioRedondeado })
@@ -966,17 +1241,14 @@ export default function Admin() {
           
           if (res.ok) {
             actualizados++;
-            console.log(`✅ Producto ${producto.id} actualizado exitosamente`);
           } else {
             errores++;
-            console.log(`❌ Error actualizando producto ${producto.id}: ${res.status}`);
           }
           
           // Agregar delay entre peticiones para evitar rate limiting
           await new Promise(resolve => setTimeout(resolve, 200));
         } catch (err) {
           errores++;
-          console.log(`❌ Error en producto ${producto.id}:`, err);
         }
       }
 
@@ -991,15 +1263,12 @@ export default function Admin() {
         await new Promise(resolve => setTimeout(resolve, 500));
         
         // Forzar recarga completa de stock
-        console.log('🔄 Recargando stock después de edición masiva...');
         await cargarStock();
         await cargarProductosBajoStock();
-        console.log('✅ Stock recargado exitosamente');
         
         // Forzar re-render del componente con un delay adicional
         setTimeout(() => {
           setProductosStock(prevStock => [...prevStock]);
-          console.log('🔄 Forzando actualización visual de productos...');
           
           // Mostrar notificación de éxito
           mostrarNotificacion(`✅ Edición masiva completada: ${actualizados} productos actualizados con ${porcentaje}% de cambio`, 'exito');
@@ -1035,6 +1304,12 @@ export default function Admin() {
       cargarMetricas();
     }
   }, [filtroMes, filtroAnio, filtroEmpleado]);
+
+  useEffect(() => {
+    if (productoSeleccionadoStock && cantidadAgregarRef.current) {
+      cantidadAgregarRef.current.focus();
+    }
+  }, [productoSeleccionadoStock]);
 
   // --- Render ---
   if (!logueado) {
@@ -1115,12 +1390,12 @@ export default function Admin() {
           {/* Estado de caja y controles */}
           {loadingCaja ? <div style={{ color: '#64748b', marginBottom: 16 }}>Cargando estado de caja...</div> : (
             caja && caja.abierta ? (
-              <div style={{ marginBottom: 24 }}>
+              <div>
                 <div style={{ color: '#059669', fontWeight: 700, marginBottom: 8 }}>🔓 Caja abierta ({caja.turno}, {caja.empleado})</div>
                 <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 8 }}>
                   <span style={{ fontWeight: 700, fontSize: '1rem' }}>Monto cierre:</span>
-                  <input type="text" value={montoCierre} onChange={e => { if (/^\d*$/.test(e.target.value)) setMontoCierre(e.target.value); }} style={{ padding: '0.7rem 1rem', borderRadius: 8, border: '1px solid #cbd5e1', fontWeight: 700, fontSize: '1rem', width: 120 }} />
-                  <button onClick={handleCerrarCaja} style={{ background: 'linear-gradient(135deg, #ef4444, #f87171)', color: '#fff', border: 'none', padding: '0.7rem 1.2rem', borderRadius: 10, fontWeight: 700, fontSize: '1rem', cursor: 'pointer', marginBottom: 8 }}>🔒 Cerrar caja</button>
+                  <input type="text" value={montoCierre} onChange={e => { if (/^\d*$/.test(e.target.value)) setMontoCierre(e.target.value); }} style={{ padding: '0.7rem', borderRadius: 8, border: '1px solid #cbd5e1', fontWeight: 700, fontSize: '1rem', width: 76 }} />
+                  <button onClick={handleCerrarCaja} style={{ background: 'linear-gradient(135deg, #ef4444, #f87171)', color: '#fff', border: 'none', padding: '0.7rem 1.2rem', borderRadius: 10, fontWeight: 700, fontSize: '1rem', cursor: 'pointer', marginBottom: 0 }}>Cerrar</button>
                 </div>
               </div>
             ) : (
@@ -1138,7 +1413,7 @@ export default function Admin() {
                     <span style={{ fontWeight: 700, fontSize: '1rem', width: 120, textAlign: 'left' }}>👤 Empleado</span>
                     <select value={empleadoCaja} onChange={e => setEmpleadoCaja(e.target.value)} style={{ padding: '0.7rem 1rem', borderRadius: 8, border: '1px solid #cbd5e1', fontWeight: 700, fontSize: '1rem', width: 145, height: '2.8rem', textAlign: 'center' }}>
                       <option value="">Seleccionar</option>
-                      {empleados.map(emp => <option key={emp} value={emp}>{emp}</option>)}
+                      {empleados.map(emp => <option key={emp.id || emp} value={emp.nombre || emp}>{emp.nombre || emp}</option>)}
                     </select>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 220 }}>
@@ -1165,10 +1440,10 @@ export default function Admin() {
           {/* Botones de navegación */}
           <div style={{ display: 'flex', gap: 16, marginBottom: 24, flexWrap: 'wrap' }}>
             <button 
-              onClick={() => { setMostrarGestionVentas(false); setMostrarGestionCajas(false); setMostrarReportes(false); setMostrarGestionStock(false); }}
+              onClick={() => { setMostrarGestionVentas(false); setMostrarGestionCajas(false); setMostrarReportes(false); setMostrarGestionStock(false); setMostrarGestionEmpleados(false); }}
               style={{ 
-                background: (!mostrarGestionVentas && !mostrarGestionCajas && !mostrarReportes && !mostrarGestionStock) ? 'linear-gradient(135deg, #fbbf24, #f59e0b)' : '#f1f5f9', 
-                color: (!mostrarGestionVentas && !mostrarGestionCajas && !mostrarReportes && !mostrarGestionStock) ? '#1e293b' : '#64748b',
+                background: (!mostrarGestionVentas && !mostrarGestionCajas && !mostrarReportes && !mostrarGestionStock && !mostrarGestionEmpleados) ? 'linear-gradient(135deg, #fbbf24, #f59e0b)' : '#f1f5f9', 
+                color: (!mostrarGestionVentas && !mostrarGestionCajas && !mostrarReportes && !mostrarGestionStock && !mostrarGestionEmpleados) ? '#1e293b' : '#64748b',
                 border: 'none', 
                 padding: '0.7rem 1.2rem', 
                 borderRadius: 10, 
@@ -1180,7 +1455,7 @@ export default function Admin() {
               🛒 Nueva Venta
             </button>
             <button 
-              onClick={() => { setMostrarGestionVentas(true); setMostrarGestionCajas(false); setMostrarReportes(false); setMostrarGestionStock(false); }}
+              onClick={() => { setMostrarGestionVentas(true); setMostrarGestionCajas(false); setMostrarReportes(false); setMostrarGestionStock(false); setMostrarGestionEmpleados(false); }}
               style={{ 
                 background: mostrarGestionVentas ? 'linear-gradient(135deg, #fbbf24, #f59e0b)' : '#f1f5f9', 
                 color: mostrarGestionVentas ? '#1e293b' : '#64748b',
@@ -1195,7 +1470,7 @@ export default function Admin() {
               📋 Gestionar Ventas
             </button>
             <button 
-              onClick={() => { setMostrarGestionVentas(false); setMostrarGestionCajas(true); setMostrarReportes(false); setMostrarGestionStock(false); }}
+              onClick={() => { setMostrarGestionVentas(false); setMostrarGestionCajas(true); setMostrarReportes(false); setMostrarGestionStock(false); setMostrarGestionEmpleados(false); }}
               style={{ 
                 background: mostrarGestionCajas ? 'linear-gradient(135deg, #fbbf24, #f59e0b)' : '#f1f5f9', 
                 color: mostrarGestionCajas ? '#1e293b' : '#64748b',
@@ -1210,7 +1485,7 @@ export default function Admin() {
               💰 Gestionar Cajas
             </button>
             <button 
-              onClick={() => { setMostrarGestionVentas(false); setMostrarGestionCajas(false); setMostrarReportes(false); setMostrarGestionStock(true); }}
+              onClick={() => { setMostrarGestionVentas(false); setMostrarGestionCajas(false); setMostrarReportes(false); setMostrarGestionStock(true); setMostrarGestionEmpleados(false); }}
               style={{ 
                 background: mostrarGestionStock ? 'linear-gradient(135deg, #fbbf24, #f59e0b)' : '#f1f5f9', 
                 color: mostrarGestionStock ? '#1e293b' : '#64748b',
@@ -1225,7 +1500,22 @@ export default function Admin() {
               📦 Gestionar Stock
             </button>
             <button 
-              onClick={() => { setMostrarGestionVentas(false); setMostrarGestionCajas(false); setMostrarReportes(true); setMostrarGestionStock(false); }}
+              onClick={() => { setMostrarGestionVentas(false); setMostrarGestionCajas(false); setMostrarReportes(false); setMostrarGestionStock(false); setMostrarGestionEmpleados(true); }}
+              style={{ 
+                background: mostrarGestionEmpleados ? 'linear-gradient(135deg, #fbbf24, #f59e0b)' : '#f1f5f9', 
+                color: mostrarGestionEmpleados ? '#1e293b' : '#64748b',
+                border: 'none', 
+                padding: '0.7rem 1.2rem', 
+                borderRadius: 10, 
+                fontWeight: 700, 
+                fontSize: '1rem', 
+                cursor: 'pointer' 
+              }}
+            >
+              👥 Gestionar Empleados
+            </button>
+            <button 
+              onClick={() => { setMostrarGestionVentas(false); setMostrarGestionCajas(false); setMostrarReportes(true); setMostrarGestionStock(false); setMostrarGestionEmpleados(false); }}
               style={{ 
                 background: mostrarReportes ? 'linear-gradient(135deg, #fbbf24, #f59e0b)' : '#f1f5f9', 
                 color: mostrarReportes ? '#1e293b' : '#64748b',
@@ -1477,6 +1767,213 @@ export default function Admin() {
                 </div>
               )}
             </div>
+          ) : mostrarGestionEmpleados ? (
+            // Vista de gestión de empleados
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+                <h2 style={{ color: '#1e293b', fontWeight: 800, margin: 0 }}>👥 Gestión de Empleados</h2>
+                <button 
+                  onClick={cargarEmpleados}
+                  disabled={loadingEmpleados}
+                  style={{ 
+                    background: loadingEmpleados ? '#f1f5f9' : 'linear-gradient(135deg, #0ea5e9, #3b82f6)', 
+                    color: loadingEmpleados ? '#64748b' : '#fff',
+                    border: 'none', 
+                    padding: '0.7rem 1.2rem', 
+                    borderRadius: 10, 
+                    fontWeight: 700, 
+                    fontSize: '1rem', 
+                    cursor: loadingEmpleados ? 'not-allowed' : 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8
+                  }}
+                >
+                  {loadingEmpleados ? '🔄 Cargando...' : '🔄 Recargar'}
+                </button>
+              </div>
+
+              {/* Agregar nuevo empleado */}
+              <div style={{ 
+                background: '#f8fafc', 
+                borderRadius: 12, 
+                padding: '1.5rem', 
+                marginBottom: 24,
+                border: '1px solid #e2e8f0'
+              }}>
+                <h3 style={{ color: '#1e293b', fontWeight: 700, marginBottom: 16 }}>➕ Agregar Nuevo Empleado</h3>
+                <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end' }}>
+                  <div style={{ flex: 1 }}>
+                    <label style={{ display: 'block', fontWeight: 600, color: '#64748b', marginBottom: 6 }}>
+                      Nombre del empleado
+                    </label>
+                    <input 
+                      type="text" 
+                      value={nuevoEmpleado} 
+                      onChange={e => setNuevoEmpleado(e.target.value)} 
+                      placeholder="Ingrese el nombre del empleado" 
+                      style={{ 
+                        width: '100%', 
+                        padding: '0.7rem', 
+                        borderRadius: 8, 
+                        border: '1px solid #cbd5e1', 
+                        fontSize: '1rem',
+                        background: 'white'
+                      }}
+                      onKeyPress={e => e.key === 'Enter' && agregarEmpleado()}
+                    />
+                  </div>
+                  <button 
+                    onClick={agregarEmpleado}
+                    disabled={!nuevoEmpleado.trim()}
+                    style={{ 
+                      background: !nuevoEmpleado.trim() ? '#f1f5f9' : 'linear-gradient(135deg, #059669, #10b981)', 
+                      color: !nuevoEmpleado.trim() ? '#64748b' : '#fff',
+                      border: 'none', 
+                      padding: '0.7rem 1.2rem', 
+                      borderRadius: 8, 
+                      fontWeight: 700, 
+                      fontSize: '1rem', 
+                      cursor: !nuevoEmpleado.trim() ? 'not-allowed' : 'pointer'
+                    }}
+                  >
+                    ➕ Agregar
+                  </button>
+                </div>
+              </div>
+
+              {/* Lista de empleados */}
+              {loadingEmpleados ? (
+                <div style={{ textAlign: 'center', padding: '2rem', color: '#64748b' }}>Cargando empleados...</div>
+              ) : errorEmpleados ? (
+                <div style={{ color: '#dc2626', textAlign: 'center', padding: '2rem' }}>{errorEmpleados}</div>
+              ) : empleados.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '2rem', color: '#64748b' }}>No hay empleados registrados</div>
+              ) : (
+                <div style={{ 
+                  background: 'white', 
+                  border: '1px solid #e2e8f0', 
+                  borderRadius: 12, 
+                  overflow: 'hidden' 
+                }}>
+                  <div style={{ 
+                    background: '#f8fafc', 
+                    padding: '1rem 1.5rem', 
+                    borderBottom: '1px solid #e2e8f0',
+                    fontWeight: 700,
+                    color: '#1e293b'
+                  }}>
+                    Empleados Registrados ({empleados.length})
+                  </div>
+                  <div style={{ maxHeight: '60vh', overflowY: 'auto' }}>
+                    {empleados.map((empleado, index) => (
+                      <div key={empleado.id} style={{ 
+                        padding: '1rem 1.5rem', 
+                        borderBottom: index < empleados.length - 1 ? '1px solid #e2e8f0' : 'none',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center'
+                      }}>
+                        {editandoEmpleado && editandoEmpleado.id === empleado.id ? (
+                          // Modo edición
+                          <div style={{ display: 'flex', gap: 12, alignItems: 'center', flex: 1 }}>
+                            <input 
+                              type="text" 
+                              value={empleadoEditando} 
+                              onChange={e => setEmpleadoEditando(e.target.value)} 
+                              style={{ 
+                                flex: 1,
+                                padding: '0.7rem', 
+                                borderRadius: 8, 
+                                border: '1px solid #cbd5e1', 
+                                fontSize: '1rem',
+                                background: 'white'
+                              }}
+                              onKeyPress={e => e.key === 'Enter' && editarEmpleado()}
+                              autoFocus
+                            />
+                            <button 
+                              onClick={editarEmpleado}
+                              disabled={!empleadoEditando.trim()}
+                              style={{ 
+                                background: !empleadoEditando.trim() ? '#f1f5f9' : 'linear-gradient(135deg, #059669, #10b981)', 
+                                color: !empleadoEditando.trim() ? '#64748b' : '#fff',
+                                border: 'none', 
+                                padding: '0.5rem 1rem', 
+                                borderRadius: 6, 
+                                fontWeight: 600, 
+                                fontSize: '0.9rem', 
+                                cursor: !empleadoEditando.trim() ? 'not-allowed' : 'pointer'
+                              }}
+                            >
+                              ✅ Guardar
+                            </button>
+                            <button 
+                              onClick={cancelarEdicionEmpleado}
+                              style={{ 
+                                background: '#f1f5f9', 
+                                color: '#64748b',
+                                border: 'none', 
+                                padding: '0.5rem 1rem', 
+                                borderRadius: 6, 
+                                fontWeight: 600, 
+                                fontSize: '0.9rem', 
+                                cursor: 'pointer'
+                              }}
+                            >
+                              ❌ Cancelar
+                            </button>
+                          </div>
+                        ) : (
+                          // Modo visualización
+                          <>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                              <div style={{ 
+                                background: 'linear-gradient(135deg, #0ea5e9, #3b82f6)', 
+                                color: 'white',
+                                width: 40, 
+                                height: 40, 
+                                borderRadius: '50%', 
+                                display: 'flex', 
+                                alignItems: 'center', 
+                                justifyContent: 'center',
+                                fontWeight: 700,
+                                fontSize: '1.1rem'
+                              }}>
+                                {empleado.nombre && empleado.nombre.charAt ? empleado.nombre.charAt(0).toUpperCase() : '?'}
+                              </div>
+                              <div>
+                                <div style={{ fontWeight: 600, color: '#1e293b', fontSize: '1.1rem' }}>
+                                  {empleado.nombre || 'Sin nombre'}
+                                </div>
+                                <div style={{ fontSize: 12, color: '#64748b' }}>
+                                  ID: {empleado.id} | Fila: {empleado.fila}
+                                </div>
+                              </div>
+                            </div>
+                            <button 
+                              onClick={() => iniciarEdicionEmpleado(empleado)}
+                              style={{ 
+                                background: 'linear-gradient(135deg, #fbbf24, #f59e0b)', 
+                                color: '#1e293b',
+                                border: 'none', 
+                                padding: '0.5rem 1rem', 
+                                borderRadius: 6, 
+                                fontWeight: 600, 
+                                fontSize: '0.9rem', 
+                                cursor: 'pointer'
+                              }}
+                            >
+                              ✏️ Editar
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
           ) : mostrarReportes ? (
             // Vista de reportes
             <div>
@@ -1563,7 +2060,7 @@ export default function Admin() {
                     >
                       <option value="">Todos</option>
                       {empleados.map(empleado => (
-                        <option key={empleado} value={empleado}>{empleado}</option>
+                        <option key={empleado.id || empleado} value={empleado.nombre || empleado}>{empleado.nombre || empleado}</option>
                       ))}
                     </select>
                   </div>
@@ -1922,6 +2419,7 @@ export default function Admin() {
                         background: 'white'
                       }}
                     >
+                      <option value="none">Ordenar</option>
                       <option value="asc">Menor a mayor</option>
                       <option value="desc">Mayor a menor</option>
                     </select>
@@ -2173,19 +2671,21 @@ export default function Admin() {
                     <button
                       type="button"
                       onClick={() => setMostrarSinStock(!mostrarSinStock)}
-                      style={{
-                        background: mostrarSinStock ? '#dc2626' : '#f3f4f6',
-                        color: mostrarSinStock ? 'white' : '#374151',
-                        border: '1px solid #d1d5db',
-                        padding: '0.5rem 0.8rem',
-                        borderRadius: 6,
+                      style={{ 
+                        padding: '0.7rem', 
+                        borderRadius: 8, 
+                        border: '1px solid #cbd5e1',
                         fontSize: '0.875rem',
                         fontWeight: 600,
                         cursor: 'pointer',
-                        transition: 'all 0.2s',
+                        background: mostrarSinStock ? '#fca5a5' : 'white',
+                        color: mostrarSinStock ? '#dc2626' : '#6b7280',
+                        width: 160,
+                        height: 44,
                         display: 'flex',
                         alignItems: 'center',
-                        gap: 4
+                        justifyContent: 'center',
+                        transition: 'all 0.2s ease'
                       }}
                       title={mostrarSinStock ? 'Ocultar productos sin stock' : 'Mostrar productos sin stock'}
                     >
@@ -2252,10 +2752,11 @@ export default function Admin() {
                             display: 'flex', 
                             alignItems: 'center', 
                             gap: 12,
-                            transition: 'background-color 0.2s'
+                            transition: 'background-color 0.2s',
+                            background: (p.stock !== undefined && p.stock !== '' && !isNaN(Number(p.stock)) && Number(p.stock) <= 0) ? '#f5f5f5' : 'transparent'
                           }} 
-                          onMouseEnter={(e) => e.target.style.backgroundColor = '#f8fafc'}
-                          onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
+                          onMouseEnter={(e) => e.target.style.backgroundColor = (p.stock !== undefined && p.stock !== '' && !isNaN(Number(p.stock)) && Number(p.stock) <= 0) ? '#f5f5f5' : '#f8fafc'}
+                          onMouseLeave={(e) => e.target.style.backgroundColor = (p.stock !== undefined && p.stock !== '' && !isNaN(Number(p.stock)) && Number(p.stock) <= 0) ? '#f5f5f5' : 'transparent'}
                           onClick={() => { setProductoSeleccionado(p); setBusqueda(''); setMostrarTodosProductos(false); }}
                         >
                           <span style={{ fontWeight: 600, flex: 1 }}>
@@ -2380,149 +2881,108 @@ export default function Admin() {
                 )}
                 {/* Carrito / Resumen de venta */}
                 <div style={{ marginBottom: 24 }}>
-                  <h3 style={{ color: '#1e293b', fontWeight: 700, marginBottom: 16 }}>🛍️ Productos en la venta</h3>
-                  {carrito.length === 0 ? (
-                    <div style={{ 
-                      color: '#64748b', 
-                      textAlign: 'center', 
-                      padding: '2rem',
-                      background: '#f8fafc',
-                      borderRadius: 12,
-                      border: '2px dashed #cbd5e1'
-                    }}>
-                      No hay productos en la venta.
-                    </div>
-                  ) : (
-                    <>
-                      {/* Productos en formato horizontal */}
-                      <div style={{ 
-                        display: 'flex', 
-                        flexWrap: 'wrap', 
-                        gap: 12, 
-                        marginBottom: 20,
-                        maxHeight: 200,
-                        overflowY: 'auto'
-                      }}>
+                  <h3 style={{ color: '#1e293b', fontWeight: 700, marginBottom: 12 }}>Productos en la venta</h3>
+                  {carrito.length === 0 ? <div style={{ color: '#64748b' }}>No hay productos en la venta.</div> : (
+                    <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 12 }}>
+                      <thead>
+                        <tr style={{ background: '#f8fafc' }}>
+                          <th style={{ textAlign: 'left', padding: 8 }}>Producto</th>
+                          <th style={{ textAlign: 'left', padding: 8 }}>Categoría</th>
+                          <th style={{ textAlign: 'right', padding: 8 }}>Precio</th>
+                          <th style={{ textAlign: 'right', padding: 8 }}>Cantidad</th>
+                          <th style={{ textAlign: 'right', padding: 8 }}>Subtotal</th>
+                          <th></th>
+                        </tr>
+                      </thead>
+                      <tbody>
                         {carrito.map(p => {
                           const precio = p.oferta && calcularPrecioOferta(p.precio, p.oferta) !== null ? calcularPrecioOferta(p.precio, p.oferta) : p.precio;
                           return (
-                            <div key={p.id} style={{ 
-                              background: 'white',
-                              border: '1px solid #e2e8f0',
-                              borderRadius: 12,
-                              padding: 12,
-                              minWidth: 200,
-                              maxWidth: 250,
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: 12,
-                              boxShadow: '0 2px 8px rgba(0,0,0,0.05)'
-                            }}>
-                              {/* Imagen pequeña */}
-                              <div style={{ 
-                                width: 50, 
-                                height: 50, 
-                                borderRadius: 6, 
-                                overflow: 'hidden',
-                                background: '#e2e8f0',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                flexShrink: 0
-                              }}>
-                                {p.imagen ? (
-                                  <img 
-                                    src={p.imagen} 
-                                    alt={p.nombre}
-                                    style={{ 
-                                      width: '100%', 
-                                      height: '100%', 
-                                      objectFit: 'cover' 
-                                    }}
-                                  />
-                                ) : (
-                                  <span style={{ color: '#64748b', fontSize: 16 }}>📦</span>
-                                )}
-                              </div>
-                              
-                              {/* Información del producto */}
-                              <div style={{ flex: 1, minWidth: 0 }}>
-                                <div style={{ 
-                                  fontWeight: 600, 
-                                  fontSize: 14, 
-                                  marginBottom: 2,
-                                  whiteSpace: 'nowrap',
-                                  overflow: 'hidden',
-                                  textOverflow: 'ellipsis'
-                                }}>
-                                  {p.nombre}
-                                </div>
-                                <div style={{ 
-                                  color: '#f59e0b', 
-                                  fontWeight: 500, 
-                                  fontSize: 12, 
-                                  marginBottom: 4 
-                                }}>
-                                  {p.categoria}
-                                </div>
-                                <div style={{ 
-                                  color: '#059669', 
-                                  fontWeight: 700, 
-                                  fontSize: 13 
-                                }}>
-                                  {formatearPrecio(precio)}
-                                </div>
-                                <div style={{ 
-                                  color: '#64748b', 
-                                  fontSize: 12,
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  gap: 8
-                                }}>
-                                  <span>×{p.cantidad}</span>
-                                  <span style={{ fontWeight: 600 }}>
-                                    {formatearPrecio(precio * p.cantidad)}
-                                  </span>
-                                </div>
-                              </div>
-                              
-                              {/* Botón quitar */}
-                              <button 
-                                onClick={() => quitarDelCarrito(p.id)} 
-                                style={{ 
-                                  background: '#ef4444', 
-                                  color: '#fff', 
-                                  border: 'none', 
-                                  borderRadius: 6, 
-                                  padding: '0.4rem 0.6rem', 
-                                  fontWeight: 700, 
-                                  cursor: 'pointer',
-                                  fontSize: 12,
-                                  flexShrink: 0
-                                }}
-                              >
-                                ✕
-                              </button>
-                            </div>
+                            <tr key={p.id}>
+                              <td style={{ padding: 8 }}>{p.nombre}</td>
+                              <td style={{ padding: 8 }}>{p.categoria}</td>
+                              <td style={{ padding: 8, textAlign: 'right' }}>{formatearPrecio(precio)}</td>
+                              <td style={{ padding: 8, textAlign: 'right' }}>{p.cantidad}</td>
+                              <td style={{ padding: 8, textAlign: 'right' }}>{formatearPrecio(precio * p.cantidad)}</td>
+                              <td style={{ padding: 8 }}><button onClick={() => quitarDelCarrito(p.id)} style={{ background: '#ef4444', color: '#fff', border: 'none', borderRadius: 6, padding: '0.3rem 0.7rem', fontWeight: 700, cursor: 'pointer' }}>Quitar</button></td>
+                            </tr>
                           );
                         })}
-                      </div>
-                      
-                      {/* Total */}
-                      <div style={{ 
-                        textAlign: 'right', 
-                        fontWeight: 800, 
-                        fontSize: 20, 
-                        color: '#059669',
-                        background: '#f0fdf4',
-                        padding: '1rem',
-                        borderRadius: 12,
-                        border: '1px solid #dcfce7'
-                      }}>
-                        Total: {formatearPrecio(totalVenta)}
-                      </div>
-                    </>
+                      </tbody>
+                    </table>
                   )}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 12 }}>
+                    {/* Botones para generar presupuesto */}
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                      {/* Botón cuadrado para generar PDF */}
+                      <button
+                        onClick={generarPresupuesto}
+                        disabled={carrito.length === 0 || generandoPresupuesto}
+                        style={{
+                          width: 130,
+                          height: 45,
+                          background: (carrito.length === 0 || generandoPresupuesto) 
+                            ?  '#7BC7EE'
+                            : 'linear-gradient(135deg, #0ea5e9, #3b82f6)',
+                          color: generandoPresupuesto ? '#64748b' : '#fff',
+                          border: 'none',
+                          borderRadius: 10,
+                          fontSize: '1rem',
+                          fontWeight: 800,
+                          cursor: carrito.length === 0 || generandoPresupuesto ? 'not-allowed' : 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          boxShadow: generandoPresupuesto 
+                            ? '0 2px 8px rgba(156,163,175,0.10)' 
+                            : '0 2px 8px rgba(14,165,233,0.20)',
+                          transition: 'all 0.3s ease'
+                        }}
+                        title="Generar PDF"
+                      >
+                      📄 Generar PDF
+                      </button>
+                      
+                      {/* Botón cuadrado de WhatsApp */}
+                      <button
+                        disabled={carrito.length === 0 || generandoPresupuesto}
+                        onClick={generarPresupuestoYWhatsApp}
+                        style={{ 
+                          width: 130,
+                          height: 45,
+                          background: (carrito.length === 0 || generandoPresupuesto) 
+                            ? '#67C78A' 
+                            : 'linear-gradient(135deg, #25D366, #128C7E)', 
+                          color: '#fff', 
+                          border: 'none', 
+                          borderRadius: 10, 
+                          fontSize: '1rem',
+                          fontWeight: 800,
+                          cursor: carrito.length === 0 || generandoPresupuesto ? 'not-allowed' : 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          boxShadow: (carrito.length === 0 || generandoPresupuesto) 
+                            ? '0 2px 8px rgba(156,163,175,0.10)' 
+                            : '0 2px 8px rgba(37,211,102,0.20)',
+                          transition: 'all 0.3s ease'
+                        }}
+                        title="Enviar por WhatsApp"
+                      >
+                        <img 
+                          src={whatsappLogo} 
+                          alt="WhatsApp" 
+                          style={{ 
+                            width: '20px', 
+                            height: '20px',
+                            verticalAlign: 'middle',
+                            marginLeft: '10px'
+                          }} 
+                        /> Enviar por WhatsApp
+                      </button>
+                    </div>
+                    <div style={{ fontWeight: 800, fontSize: 23, color: '#059669' }}>Total: {formatearPrecio(totalVenta)}</div>
+                  </div>
                 </div>
                 {/* Formas de pago */}
                 <div style={{ marginBottom: 24 }}>
@@ -2793,6 +3253,15 @@ export default function Admin() {
                     value={cantidadAgregar}
                     onChange={e => setCantidadAgregar(e.target.value)}
                     placeholder="Cantidad a agregar"
+                    ref={cantidadAgregarRef}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        if (!editandoStock && cantidadAgregar && Number(cantidadAgregar) > 0) {
+                          agregarStock();
+                        }
+                      }
+                    }}
                     style={{ 
                       flex: 1,
                       padding: '0.7rem', 
@@ -2920,6 +3389,138 @@ export default function Admin() {
                 }}
               >
                 {editandoStock ? 'Guardando...' : '💾 Guardar Cambios'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de WhatsApp */}
+      {mostrarModalWhatsApp && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0,0,0,0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1001
+        }}>
+          <div style={{
+            background: 'white',
+            borderRadius: 16,
+            padding: '2rem',
+            maxWidth: 500,
+            width: '90%',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.2)'
+          }}>
+            <div style={{ textAlign: 'center', marginBottom: 24 }}>
+              <div style={{ 
+                fontSize: '3rem', 
+                marginBottom: 16,
+                background: 'linear-gradient(135deg, #25D366, #128C7E)',
+                width: 80,
+                height: 80,
+                borderRadius: '50%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                margin: '0 auto 16px',
+                color: 'white'
+              }}>
+                📱
+              </div>
+              <h3 style={{ color: '#1e293b', fontWeight: 800, fontSize: '1.5rem', marginBottom: 8 }}>
+                Enviar por WhatsApp
+              </h3>
+              <p style={{ color: '#64748b', fontSize: '1rem' }}>
+                Ingresa el número de WhatsApp para enviar el presupuesto
+              </p>
+            </div>
+
+            <div style={{ marginBottom: 24 }}>
+              <label style={{ fontWeight: 600, color: '#64748b', marginBottom: 8, display: 'block' }}>
+                📞 Número de WhatsApp:
+              </label>
+              <input
+                type="tel"
+                value={numeroWhatsApp}
+                onChange={e => setNumeroWhatsApp(e.target.value)}
+                placeholder="Ej: 11 1234 5678 (sin código de país)"
+                style={{
+                  width: '100%',
+                  padding: '0.8rem',
+                  borderRadius: 8,
+                  border: '1px solid #cbd5e1',
+                  fontSize: '1rem',
+                  background: 'white'
+                }}
+                onKeyPress={e => e.key === 'Enter' && enviarWhatsApp()}
+                autoFocus
+              />
+              <div style={{ fontSize: '0.9rem', color: '#64748b', marginTop: 8 }}>
+                💡 El código de país (+54) se agregará automáticamente
+              </div>
+            </div>
+
+            {presupuestoGenerado && (
+              <div style={{ 
+                background: '#f0f9ff', 
+                padding: '1rem', 
+                borderRadius: 12, 
+                marginBottom: 24,
+                border: '1px solid #bae6fd'
+              }}>
+                <div style={{ fontWeight: 600, color: '#0c4a6e', marginBottom: 8 }}>📋 Resumen del presupuesto:</div>
+                <div style={{ fontSize: '0.9rem', color: '#0c4a6e' }}>
+                  <div>💰 Total: ${presupuestoGenerado.total.toLocaleString('es-AR')}</div>
+                </div>
+              </div>
+            )}
+
+            <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => {
+                  setMostrarModalWhatsApp(false);
+                  setNumeroWhatsApp('');
+                  setPresupuestoGenerado(null);
+                }}
+                style={{
+                  background: '#f1f5f9',
+                  color: '#64748b',
+                  border: 'none',
+                  padding: '0.8rem 1.5rem',
+                  borderRadius: 10,
+                  fontWeight: 700,
+                  fontSize: '1rem',
+                  cursor: 'pointer'
+                }}
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={enviarWhatsApp}
+                disabled={!numeroWhatsApp.trim()}
+                style={{
+                  background: !numeroWhatsApp.trim() 
+                    ? '#9ca3af' 
+                    : 'linear-gradient(135deg, #25D366, #128C7E)',
+                  color: 'white',
+                  border: 'none',
+                  padding: '0.8rem 1.5rem',
+                  borderRadius: 10,
+                  fontWeight: 700,
+                  fontSize: '1rem',
+                  cursor: !numeroWhatsApp.trim() ? 'not-allowed' : 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8
+                }}
+              >
+                📱 Enviar WhatsApp
               </button>
             </div>
           </div>

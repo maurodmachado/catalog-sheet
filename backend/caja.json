@@ -1,151 +1,79 @@
 {
   "abierta": true,
   "turno": "Mañana",
-  "empleado": "Lakshmi",
-  "fechaApertura": "5/7/2025, 16:44:33",
-  "fechaAperturaSeparada": "05/07/2025",
-  "horaApertura": "16:44:33",
+  "empleado": "Damian",
+  "fechaApertura": "6/7/2025, 21:16:30",
+  "fechaAperturaSeparada": "06/07/2025",
+  "horaApertura": "21:16:30",
   "montoApertura": 30000,
   "ventas": [
     {
-      "productos": [
-        "GROWMIX MULTIPRO PROFESIONAL 80LT"
-      ],
-      "cantidades": [
-        1
-      ],
-      "total": 29900,
-      "efectivo": 29900,
+      "total": 8900,
+      "efectivo": 8900,
       "transferencia": 0,
       "pos": 0,
-      "cliente": "",
-      "observaciones": ""
-    },
-    {
       "productos": [
-        "GROWMIX MULTIPRO PROFESIONAL 80LT",
-        "VITAFLOR ALLMIX",
-        "VITAFLOR LIGTHMIX",
-        "NUBE VERDE"
+        "GROWMIX MULTIPRO PROFESIONAL 20LT"
       ],
       "cantidades": [
-        1,
-        1,
-        1,
         1
+      ]
+    },
+    {
+      "total": 8900,
+      "efectivo": 8900,
+      "transferencia": 0,
+      "pos": 0,
+      "productos": [
+        "GROWMIX MULTIPRO PROFESIONAL 20LT"
       ],
-      "total": 83900,
+      "cantidades": [
+        1
+      ]
+    },
+    {
+      "total": 13200,
       "efectivo": 0,
-      "transferencia": 83900,
+      "transferencia": 13200,
       "pos": 0,
-      "cliente": "",
-      "observaciones": ""
-    },
-    {
       "productos": [
         "GROWMIX MULTIPRO PROFESIONAL 80LT"
       ],
       "cantidades": [
         1
-      ],
-      "total": 29900,
-      "efectivo": 29900,
-      "transferencia": 0,
-      "pos": 0,
-      "cliente": "",
-      "observaciones": ""
+      ]
     },
     {
-      "productos": [
-        "GROWMIX MULTIPRO PROFESIONAL 80LT"
-      ],
-      "cantidades": [
-        1
-      ],
-      "total": 29900,
-      "efectivo": 29900,
-      "transferencia": 0,
-      "pos": 0,
-      "cliente": "Cliente Prueba",
-      "observaciones": "Venta de prueba"
-    },
-    {
-      "productos": [
-        "VITAFLOR ALLMIX"
-      ],
-      "cantidades": [
-        1
-      ],
-      "total": 23000,
-      "efectivo": 23000,
-      "transferencia": 0,
-      "pos": 0,
-      "cliente": "",
-      "observaciones": ""
-    },
-    {
-      "productos": [
-        "VITAFLOR ALLMIX"
-      ],
-      "cantidades": [
-        1
-      ],
-      "total": 23000,
+      "total": 13200,
       "efectivo": 0,
-      "transferencia": 23000,
+      "transferencia": 200,
+      "pos": 13000,
+      "productos": [
+        "GROWMIX MULTIPRO PROFESIONAL 80LT"
+      ],
+      "cantidades": [
+        1
+      ]
+    },
+    {
+      "total": 8900,
+      "efectivo": 8900,
+      "transferencia": 0,
       "pos": 0,
-      "cliente": "",
-      "observaciones": ""
+      "productos": [
+        "GROWMIX MULTIPRO PROFESIONAL 20LT"
+      ],
+      "cantidades": [
+        1
+      ]
     }
   ],
   "totales": {
-    "efectivo": 112700,
-    "transferencia": 106900,
-    "pos": 0
+    "efectivo": 26700,
+    "transferencia": 13400,
+    "pos": 13000
   },
-  "cantidadVentas": 6,
-  "cantidadProductos": 9,
-  "totalVendido": 219600
-}
-      "pos": 0,
-      "cliente": "Cliente Prueba",
-      "observaciones": "Venta de prueba"
-    },
-    {
-      "productos": [
-        "VITAFLOR ALLMIX"
-      ],
-      "cantidades": [
-        1
-      ],
-      "total": 23000,
-      "efectivo": 23000,
-      "transferencia": 0,
-      "pos": 0,
-      "cliente": "",
-      "observaciones": ""
-    },
-    {
-      "productos": [
-        "VITAFLOR ALLMIX"
-      ],
-      "cantidades": [
-        1
-      ],
-      "total": 23000,
-      "efectivo": 0,
-      "transferencia": 23000,
-      "pos": 0,
-      "cliente": "",
-      "observaciones": ""
-    }
-  ],
-  "totales": {
-    "efectivo": 112700,
-    "transferencia": 106900,
-    "pos": 0
-  },
-  "cantidadVentas": 6,
-  "cantidadProductos": 9,
-  "totalVendido": 219600
+  "cantidadVentas": 5,
+  "cantidadProductos": 5,
+  "totalVendido": 53100
 }

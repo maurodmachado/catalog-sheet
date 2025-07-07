@@ -180,12 +180,10 @@ function App() {
       const existe = prev.find((p) => p.id === producto.id)
       if (existe) {
         const nuevaCantidad = existe.cantidad + 1;
-        mostrarNotificacion(`✅ ${producto.nombre} actualizado en el carrito (${nuevaCantidad} unidades)`, 'success');
         return prev.map((p) =>
           p.id === producto.id ? { ...p, cantidad: nuevaCantidad } : p
         )
       } else {
-        mostrarNotificacion(`✅ ${producto.nombre} agregado al carrito (1 unidad)`, 'success');
         return [...prev, { ...producto, cantidad: 1 }]
       }
     })
@@ -224,7 +222,7 @@ function App() {
     return mensaje
   }
 
-  const linkWhatsApp = `https://api.whatsapp.com/send/?phone=5493835117722&text=${armarMensajeWhatsApp()}`
+  const linkWhatsApp = `https://api.whatsapp.com/send/?phone=${import.meta.env.VITE_TELEFONO}&text=${armarMensajeWhatsApp()}`
 
   // Cerrar modal con Escape o volver atrás
   useEffect(() => {
@@ -568,7 +566,7 @@ function App() {
           <img src={logo} alt="AlNorteGrow" className="logo-footer" /> www.alnortegrow.com.ar
         </a>
       </footer>
-      <a href="https://www.whatsapp.com/catalog/5493835117722/" className="whatsapp-float" target="_blank" rel="noopener noreferrer" title="Ver catálogo en WhatsApp">
+      <a href={`https://www.whatsapp.com/catalog/${import.meta.env.VITE_TELEFONO}/`} className="whatsapp-float" target="_blank" rel="noopener noreferrer" title="Ver catálogo en WhatsApp">
         <img src={whatsappLogo} alt="WhatsApp" style={{width: '70%', height: '70%', objectFit: 'contain', display: 'block'}} />
       </a>
 
