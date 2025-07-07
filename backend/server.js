@@ -359,7 +359,7 @@ function registrarVentaEnCaja(venta) {
   });
 
   // Guardar en archivo
-  guardarCajaEnArchivo();
+  guardarCaja();
 
   return { success: true };
 }

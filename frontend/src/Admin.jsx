@@ -38,6 +38,14 @@ export default function Admin() {
   const [errorVentas, setErrorVentas] = useState('');
   const [eliminandoVenta, setEliminandoVenta] = useState(null);
   const [mostrarGestionVentas, setMostrarGestionVentas] = useState(false);
+  
+  // Filtros para ventas
+  const [filtroVendedorVentas, setFiltroVendedorVentas] = useState('');
+  const [filtroFechaVentas, setFiltroFechaVentas] = useState('');
+  const [filtroMesVentas, setFiltroMesVentas] = useState('');
+  const [filtroAnioVentas, setFiltroAnioVentas] = useState('');
+  const [filtroMetodoPagoVentas, setFiltroMetodoPagoVentas] = useState('');
+  const [ordenVentas, setOrdenVentas] = useState('fecha_desc');
 
   // --- Estados para gestión de cajas ---
   const [cajas, setCajas] = useState([]);
@@ -45,6 +53,16 @@ export default function Admin() {
   const [errorCajas, setErrorCajas] = useState('');
   const [eliminandoCaja, setEliminandoCaja] = useState(null);
   const [mostrarGestionCajas, setMostrarGestionCajas] = useState(false);
+  
+  // Filtros para cajas
+  const [filtroVendedorCajas, setFiltroVendedorCajas] = useState('');
+  const [filtroFechaCajas, setFiltroFechaCajas] = useState('');
+  const [filtroMesCajas, setFiltroMesCajas] = useState('');
+  const [filtroAnioCajas, setFiltroAnioCajas] = useState('');
+  const [filtroTurnoCajas, setFiltroTurnoCajas] = useState('');
+  const [ordenCajas, setOrdenCajas] = useState('fecha_desc');
+  const [mostrarFiltrosVentas, setMostrarFiltrosVentas] = useState(true);
+  const [mostrarFiltrosCajas, setMostrarFiltrosCajas] = useState(true);
 
   // --- Estados para gestión de stock ---
   const [productosStock, setProductosStock] = useState([]);
@@ -723,6 +741,78 @@ window.open(urlWhatsApp, '_blank');
     }
   };
 
+  // Función para obtener ventas filtradas y ordenadas
+  const obtenerVentasFiltradas = () => {
+    let ventasFiltradas = [...ventas];
+    
+    // Filtrar por vendedor
+    if (filtroVendedorVentas) {
+      ventasFiltradas = ventasFiltradas.filter(venta =>
+        venta.vendedor && venta.vendedor === filtroVendedorVentas
+      );
+    }
+    
+    // Filtrar por fecha específica
+    if (filtroFechaVentas) {
+      ventasFiltradas = ventasFiltradas.filter(venta => {
+        const fechaVenta = new Date(venta.fecha).toISOString().split('T')[0];
+        return fechaVenta === filtroFechaVentas;
+      });
+    }
+    
+    // Filtrar por mes
+    if (filtroMesVentas) {
+      ventasFiltradas = ventasFiltradas.filter(venta => {
+        const fechaVenta = new Date(venta.fecha);
+        const mesVenta = fechaVenta.getMonth() + 1; // getMonth() devuelve 0-11
+        return mesVenta === parseInt(filtroMesVentas);
+      });
+    }
+    
+    // Filtrar por año
+    if (filtroAnioVentas) {
+      ventasFiltradas = ventasFiltradas.filter(venta => {
+        const fechaVenta = new Date(venta.fecha);
+        const anioVenta = fechaVenta.getFullYear();
+        return anioVenta === parseInt(filtroAnioVentas);
+      });
+    }
+    
+    // Filtrar por método de pago
+    if (filtroMetodoPagoVentas) {
+      ventasFiltradas = ventasFiltradas.filter(venta => {
+        switch (filtroMetodoPagoVentas) {
+          case 'efectivo':
+            return venta.efectivo > 0;
+          case 'transferencia':
+            return venta.transferencia > 0;
+          case 'pos':
+            return venta.pos > 0;
+          default:
+            return true;
+        }
+      });
+    }
+    
+    // Ordenar ventas
+    ventasFiltradas.sort((a, b) => {
+      switch (ordenVentas) {
+        case 'fecha_asc':
+          return new Date(a.fecha) - new Date(b.fecha);
+        case 'fecha_desc':
+          return new Date(b.fecha) - new Date(a.fecha);
+        case 'monto_asc':
+          return a.total - b.total;
+        case 'monto_desc':
+          return b.total - a.total;
+        default:
+          return new Date(b.fecha) - new Date(a.fecha);
+      }
+    });
+    
+    return ventasFiltradas;
+  };
+
   const eliminarVenta = async (idVenta) => {
     mostrarConfirmacion(
       'Eliminar Venta',
@@ -791,6 +881,72 @@ window.open(urlWhatsApp, '_blank');
     }
   };
 
+  // Función para obtener cajas filtradas y ordenadas
+  const obtenerCajasFiltradas = () => {
+    let cajasFiltradas = [...cajas];
+    
+    // Filtrar por vendedor (empleado)
+    if (filtroVendedorCajas) {
+      cajasFiltradas = cajasFiltradas.filter(caja =>
+        caja.empleado && caja.empleado.toLowerCase() === filtroVendedorCajas.toLowerCase()
+      );
+    }
+    
+    // Filtrar por fecha específica
+    if (filtroFechaCajas) {
+      cajasFiltradas = cajasFiltradas.filter(caja => {
+        const fechaCaja = new Date(caja.fechaApertura).toISOString().split('T')[0];
+        return fechaCaja === filtroFechaCajas;
+      });
+    }
+    
+    // Filtrar por turno
+    if (filtroTurnoCajas) {
+      cajasFiltradas = cajasFiltradas.filter(caja =>
+        caja.turno && caja.turno.toLowerCase() === filtroTurnoCajas.toLowerCase()
+      );
+    }
+    
+    // Filtrar por mes
+    if (filtroMesCajas) {
+      cajasFiltradas = cajasFiltradas.filter(caja => {
+        const fechaCaja = new Date(caja.fechaApertura);
+        const mesCaja = fechaCaja.getMonth() + 1; // getMonth() devuelve 0-11
+        return mesCaja === parseInt(filtroMesCajas);
+      });
+    }
+    
+    // Filtrar por año
+    if (filtroAnioCajas) {
+      cajasFiltradas = cajasFiltradas.filter(caja => {
+        const fechaCaja = new Date(caja.fechaApertura);
+        const anioCaja = fechaCaja.getFullYear();
+        return anioCaja === parseInt(filtroAnioCajas);
+      });
+    }
+    
+    // Ordenar cajas
+    cajasFiltradas.sort((a, b) => {
+      const totalA = (a.efectivo || 0) + (a.transferencia || 0) + (a.pos || 0);
+      const totalB = (b.efectivo || 0) + (b.transferencia || 0) + (b.pos || 0);
+      
+      switch (ordenCajas) {
+        case 'fecha_asc':
+          return new Date(a.fechaApertura) - new Date(b.fechaApertura);
+        case 'fecha_desc':
+          return new Date(b.fechaApertura) - new Date(a.fechaApertura);
+        case 'monto_asc':
+          return totalA - totalB;
+        case 'monto_desc':
+          return totalB - totalA;
+        default:
+          return new Date(b.fechaApertura) - new Date(a.fechaApertura);
+      }
+    });
+    
+    return cajasFiltradas;
+  };
+
   const eliminarCaja = async (idCaja) => {
     mostrarConfirmacion(
       'Eliminar Caja',
@@ -855,6 +1011,18 @@ window.open(urlWhatsApp, '_blank');
     } finally {
       setLoadingMetricas(false);
     }
+  };
+
+  // Función para obtener la caja con mayor venta
+  const obtenerCajaConMayorVenta = () => {
+    if (!cajas || cajas.length === 0) return null;
+    
+    return cajas.reduce((cajaMayor, cajaActual) => {
+      const totalActual = (cajaActual.efectivo || 0) + (cajaActual.transferencia || 0) + (cajaActual.pos || 0);
+      const totalMayor = (cajaMayor.efectivo || 0) + (cajaMayor.transferencia || 0) + (cajaMayor.pos || 0);
+      
+      return totalActual > totalMayor ? cajaActual : cajaMayor;
+    });
   };
 
   const cargarReporteVentas = async () => {
@@ -1295,6 +1463,7 @@ window.open(urlWhatsApp, '_blank');
       cargarMetricas();
       cargarReporteVentas();
       cargarProductosVendidos();
+      cargarCajas(); // Cargar cajas para poder mostrar la caja con mayor venta
     }
   }, [mostrarReportes]);
 
@@ -1536,15 +1705,251 @@ window.open(urlWhatsApp, '_blank');
             <div>
               <h2 style={{ color: '#1e293b', fontWeight: 800, marginBottom: 24 }}>📋 Gestión de Ventas</h2>
               
+              {/* Filtros y ordenamiento */}
+              <div style={{ 
+                background: '#f8fafc', 
+                borderRadius: 12, 
+                padding: mostrarFiltrosVentas ? '1.5rem' : '1rem', 
+                marginBottom: 24,
+                boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
+                border: '1px solid #e2e8f0'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: mostrarFiltrosVentas ? 16 : 0 }}>
+                  <h3 style={{ color: '#1e293b', fontWeight: 700, margin: 0 }}>🔍 Filtros y Ordenamiento</h3>
+                  <button
+                    onClick={() => setMostrarFiltrosVentas(!mostrarFiltrosVentas)}
+                    style={{
+                      background: '#f1f5f9',
+                      color: '#64748b',
+                      border: 'none',
+                      padding: '0.5rem',
+                      borderRadius: 6,
+                      cursor: 'pointer',
+                      fontSize: '1.2rem',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      width: '32px',
+                      height: '32px'
+                    }}
+                    title={mostrarFiltrosVentas ? 'Ocultar filtros' : 'Mostrar filtros'}
+                  >
+                    {mostrarFiltrosVentas ? '−' : '+'}
+                  </button>
+                </div>
+                
+                {mostrarFiltrosVentas && (
+                  <>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12, marginBottom: 16 }}>
+                      {/* Filtro por vendedor */}
+                      <div style={{ minWidth: '85px' }}>
+                        <label style={{ display: 'block', fontWeight: 600, color: '#64748b', marginBottom: 6 }}>
+                          👤 Vendedor
+                        </label>
+                        <select
+                          value={filtroVendedorVentas}
+                          onChange={e => setFiltroVendedorVentas(e.target.value)}
+                          style={{ 
+                            width: '100%', 
+                            padding: '0.7rem', 
+                            borderRadius: 8, 
+                            border: '1px solid #cbd5e1', 
+                            fontSize: '1rem',
+                            background: 'white'
+                          }}
+                        >
+                          <option value="">Todos</option>
+                          {empleados.map(empleado => (
+                            <option key={empleado.id || empleado} value={empleado.nombre || empleado}>
+                              {empleado.nombre || empleado}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* Filtro por fecha */}
+                      <div>
+                        <label style={{ display: 'block', fontWeight: 600, color: '#64748b', marginBottom: 6 }}>
+                          📅 Fecha
+                        </label>
+                        <input
+                          type="date"
+                          value={filtroFechaVentas}
+                          onChange={e => setFiltroFechaVentas(e.target.value)}
+                          style={{ 
+                            width: '100%', 
+                            padding: '0.7rem', 
+                            borderRadius: 8, 
+                            border: '1px solid #cbd5e1', 
+                            fontSize: '1rem' 
+                          }}
+                        />
+                      </div>
+
+                      {/* Filtro por método de pago */}
+                      <div style={{ minWidth: '110px' }}>
+                        <label style={{ display: 'block', fontWeight: 600, color: '#64748b', marginBottom: 6 }}>
+                          💳 Método
+                        </label>
+                        <select
+                          value={filtroMetodoPagoVentas}
+                          onChange={e => setFiltroMetodoPagoVentas(e.target.value)}
+                          style={{ 
+                            width: '100%', 
+                            padding: '0.7rem', 
+                            borderRadius: 8, 
+                            border: '1px solid #cbd5e1', 
+                            fontSize: '1rem',
+                            background: 'white'
+                          }}
+                        >
+                          <option value="">Todos</option>
+                          <option value="efectivo">Efectivo</option>
+                          <option value="transferencia">Transferencia</option>
+                          <option value="pos">POS</option>
+                        </select>
+                      </div>
+
+                      {/* Filtro por mes */}
+                      <div style={{ minWidth: '85px' }}>
+                        <label style={{ display: 'block', fontWeight: 600, color: '#64748b', marginBottom: 6 }}>
+                          📆 Mes
+                        </label>
+                        <select
+                          value={filtroMesVentas}
+                          onChange={e => setFiltroMesVentas(e.target.value)}
+                          style={{ 
+                            width: '100%', 
+                            padding: '0.7rem', 
+                            borderRadius: 8, 
+                            border: '1px solid #cbd5e1', 
+                            fontSize: '1rem',
+                            background: 'white'
+                          }}
+                        >
+                          <option value="">Todos</option>
+                          <option value="1">Enero</option>
+                          <option value="2">Febrero</option>
+                          <option value="3">Marzo</option>
+                          <option value="4">Abril</option>
+                          <option value="5">Mayo</option>
+                          <option value="6">Junio</option>
+                          <option value="7">Julio</option>
+                          <option value="8">Agosto</option>
+                          <option value="9">Septiembre</option>
+                          <option value="10">Octubre</option>
+                          <option value="11">Noviembre</option>
+                          <option value="12">Diciembre</option>
+                        </select>
+                      </div>
+
+                      {/* Filtro por año */}
+                      <div style={{ minWidth: '55px' }}>
+                        <label style={{ display: 'block', fontWeight: 600, color: '#64748b', marginBottom: 6 }}>
+                          📅 Año
+                        </label>
+                        <select
+                          value={filtroAnioVentas}
+                          onChange={e => setFiltroAnioVentas(e.target.value)}
+                          style={{ 
+                            width: '100%', 
+                            padding: '0.7rem', 
+                            borderRadius: 8, 
+                            border: '1px solid #cbd5e1', 
+                            fontSize: '1rem',
+                            background: 'white'
+                          }}
+                        >
+                          <option value="">Todos</option>
+                          <option value="2023">2023</option>
+                          <option value="2024">2024</option>
+                          <option value="2025">2025</option>
+                          <option value="2026">2026</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* Segunda fila con ordenamiento y botón limpiar */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'end', gap: 16, marginBottom: 16 }}>
+                      {/* Ordenamiento */}
+                      <div style={{ minWidth: '180px' }}>
+                        <label style={{ display: 'block', fontWeight: 600, color: '#64748b', marginBottom: 6 }}>
+                          📊 Ordenar por
+                        </label>
+                        <select
+                          value={ordenVentas}
+                          onChange={e => setOrdenVentas(e.target.value)}
+                          style={{ 
+                            width: '100%', 
+                            padding: '0.7rem', 
+                            borderRadius: 8, 
+                            border: '1px solid #cbd5e1', 
+                            fontSize: '1rem',
+                            background: 'white'
+                          }}
+                        >
+                          <option value="fecha_desc">Fecha (más reciente)</option>
+                          <option value="fecha_asc">Fecha (más antigua)</option>
+                          <option value="monto_desc">Monto (mayor)</option>
+                          <option value="monto_asc">Monto (menor)</option>
+                        </select>
+                      </div>
+
+                      {/* Botón limpiar filtros */}
+                      <div>
+                        <button
+                          onClick={() => {
+                            setFiltroVendedorVentas('');
+                            setFiltroFechaVentas('');
+                            setFiltroMesVentas('');
+                            setFiltroAnioVentas('');
+                            setFiltroMetodoPagoVentas('');
+                            setOrdenVentas('fecha_desc');
+                          }}
+                          style={{
+                            background: '#f1f5f9',
+                            color: '#64748b',
+                            border: 'none',
+                            padding: '0.7rem 1.2rem',
+                            borderRadius: 8,
+                            fontWeight: 700,
+                            fontSize: '1rem',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          🗑️ Limpiar filtros
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Contador de resultados */}
+                    <div style={{ 
+                      marginTop: 16, 
+                      padding: '0.8rem', 
+                      background: '#f8fafc', 
+                      borderRadius: 8, 
+                      border: '1px solid #e2e8f0',
+                      textAlign: 'center'
+                    }}>
+                      <span style={{ fontWeight: 600, color: '#64748b' }}>
+                        📊 Mostrando {obtenerVentasFiltradas().length} de {ventas.length} ventas
+                      </span>
+                    </div>
+                  </>
+                )}
+              </div>
+              
               {loadingVentas ? (
                 <div style={{ textAlign: 'center', padding: '2rem', color: '#64748b' }}>Cargando ventas...</div>
               ) : errorVentas ? (
                 <div style={{ color: '#dc2626', textAlign: 'center', padding: '2rem' }}>{errorVentas}</div>
-              ) : ventas.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: '2rem', color: '#64748b' }}>No hay ventas registradas</div>
+              ) : obtenerVentasFiltradas().length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '2rem', color: '#64748b' }}>
+                  {ventas.length === 0 ? 'No hay ventas registradas' : 'No hay ventas que coincidan con los filtros'}
+                </div>
               ) : (
                 <div style={{ maxHeight: '70vh', overflowY: 'auto' }}>
-                  {ventas.map((venta, index) => (
+                  {obtenerVentasFiltradas().map((venta, index) => (
                     <div key={venta.id} style={{ 
                       border: '1px solid #e2e8f0', 
                       borderRadius: 12, 
@@ -1651,15 +2056,250 @@ window.open(urlWhatsApp, '_blank');
             <div>
               <h2 style={{ color: '#1e293b', fontWeight: 800, marginBottom: 24 }}>💰 Gestión de Cajas</h2>
               
+              {/* Filtros y ordenamiento */}
+              <div style={{ 
+                background: '#f8fafc', 
+                borderRadius: 12, 
+                padding: mostrarFiltrosCajas ? '1.5rem' : '1rem', 
+                marginBottom: 24,
+                boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
+                border: '1px solid #e2e8f0'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: mostrarFiltrosCajas ? 16 : 0 }}>
+                  <h3 style={{ color: '#1e293b', fontWeight: 700, margin: 0 }}>🔍 Filtros y Ordenamiento</h3>
+                  <button
+                    onClick={() => setMostrarFiltrosCajas(!mostrarFiltrosCajas)}
+                    style={{
+                      background: '#f1f5f9',
+                      color: '#64748b',
+                      border: 'none',
+                      padding: '0.5rem',
+                      borderRadius: 6,
+                      cursor: 'pointer',
+                      fontSize: '1.2rem',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      width: '32px',
+                      height: '32px'
+                    }}
+                    title={mostrarFiltrosCajas ? 'Ocultar filtros' : 'Mostrar filtros'}
+                  >
+                    {mostrarFiltrosCajas ? '−' : '+'}
+                  </button>
+                </div>
+                
+                {mostrarFiltrosCajas && (
+                  <>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12, marginBottom: 16 }}>
+                      {/* Filtro por vendedor */}
+                      <div style={{ minWidth: '85px' }}>
+                        <label style={{ display: 'block', fontWeight: 600, color: '#64748b', marginBottom: 6 }}>
+                          👤 Vendedor
+                        </label>
+                        <select
+                          value={filtroVendedorCajas}
+                          onChange={e => setFiltroVendedorCajas(e.target.value)}
+                          style={{ 
+                            width: '100%', 
+                            padding: '0.7rem', 
+                            borderRadius: 8, 
+                            border: '1px solid #cbd5e1', 
+                            fontSize: '1rem',
+                            background: 'white'
+                          }}
+                        >
+                          <option value="">Todos</option>
+                          {empleados.map(empleado => (
+                            <option key={empleado.id || empleado} value={empleado.nombre || empleado}>
+                              {empleado.nombre || empleado}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* Filtro por fecha */}
+                      <div>
+                        <label style={{ display: 'block', fontWeight: 600, color: '#64748b', marginBottom: 6 }}>
+                          📅 Fecha
+                        </label>
+                        <input
+                          type="date"
+                          value={filtroFechaCajas}
+                          onChange={e => setFiltroFechaCajas(e.target.value)}
+                          style={{ 
+                            width: '100%', 
+                            padding: '0.7rem', 
+                            borderRadius: 8, 
+                            border: '1px solid #cbd5e1', 
+                            fontSize: '1rem' 
+                          }}
+                        />
+                      </div>
+
+                      {/* Filtro por turno */}
+                      <div style={{ minWidth: '110px' }}>
+                        <label style={{ display: 'block', fontWeight: 600, color: '#64748b', marginBottom: 6 }}>
+                          🌅 Turno
+                        </label>
+                        <select
+                          value={filtroTurnoCajas}
+                          onChange={e => setFiltroTurnoCajas(e.target.value)}
+                          style={{ 
+                            width: '100%', 
+                            padding: '0.7rem', 
+                            borderRadius: 8, 
+                            border: '1px solid #cbd5e1', 
+                            fontSize: '1rem',
+                            background: 'white'
+                          }}
+                        >
+                          <option value="">Todos</option>
+                          <option value="mañana">Mañana</option>
+                          <option value="tarde">Tarde</option>
+                        </select>
+                      </div>
+
+                      {/* Filtro por mes */}
+                      <div style={{ minWidth: '85px' }}>
+                        <label style={{ display: 'block', fontWeight: 600, color: '#64748b', marginBottom: 6 }}>
+                          📆 Mes
+                        </label>
+                        <select
+                          value={filtroMesCajas}
+                          onChange={e => setFiltroMesCajas(e.target.value)}
+                          style={{ 
+                            width: '100%', 
+                            padding: '0.7rem', 
+                            borderRadius: 8, 
+                            border: '1px solid #cbd5e1', 
+                            fontSize: '1rem',
+                            background: 'white'
+                          }}
+                        >
+                          <option value="">Todos</option>
+                          <option value="1">Enero</option>
+                          <option value="2">Febrero</option>
+                          <option value="3">Marzo</option>
+                          <option value="4">Abril</option>
+                          <option value="5">Mayo</option>
+                          <option value="6">Junio</option>
+                          <option value="7">Julio</option>
+                          <option value="8">Agosto</option>
+                          <option value="9">Septiembre</option>
+                          <option value="10">Octubre</option>
+                          <option value="11">Noviembre</option>
+                          <option value="12">Diciembre</option>
+                        </select>
+                      </div>
+
+                      {/* Filtro por año */}
+                      <div style={{ minWidth: '55px' }}>
+                        <label style={{ display: 'block', fontWeight: 600, color: '#64748b', marginBottom: 6 }}>
+                          📅 Año
+                        </label>
+                        <select
+                          value={filtroAnioCajas}
+                          onChange={e => setFiltroAnioCajas(e.target.value)}
+                          style={{ 
+                            width: '100%', 
+                            padding: '0.7rem', 
+                            borderRadius: 8, 
+                            border: '1px solid #cbd5e1', 
+                            fontSize: '1rem',
+                            background: 'white'
+                          }}
+                        >
+                          <option value="">Todos</option>
+                          <option value="2023">2023</option>
+                          <option value="2024">2024</option>
+                          <option value="2025">2025</option>
+                          <option value="2026">2026</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* Segunda fila con ordenamiento y botón limpiar */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'end', gap: 16, marginBottom: 16 }}>
+                      {/* Ordenamiento */}
+                      <div style={{ minWidth: '180px' }}>
+                        <label style={{ display: 'block', fontWeight: 600, color: '#64748b', marginBottom: 6 }}>
+                          📊 Ordenar por
+                        </label>
+                        <select
+                          value={ordenCajas}
+                          onChange={e => setOrdenCajas(e.target.value)}
+                          style={{ 
+                            width: '100%', 
+                            padding: '0.7rem', 
+                            borderRadius: 8, 
+                            border: '1px solid #cbd5e1', 
+                            fontSize: '1rem',
+                            background: 'white'
+                          }}
+                        >
+                          <option value="fecha_desc">Fecha (más reciente)</option>
+                          <option value="fecha_asc">Fecha (más antigua)</option>
+                          <option value="monto_desc">Monto (mayor)</option>
+                          <option value="monto_asc">Monto (menor)</option>
+                        </select>
+                      </div>
+
+                      {/* Botón limpiar filtros */}
+                      <div>
+                        <button
+                          onClick={() => {
+                            setFiltroVendedorCajas('');
+                            setFiltroFechaCajas('');
+                            setFiltroMesCajas('');
+                            setFiltroAnioCajas('');
+                            setFiltroTurnoCajas('');
+                            setOrdenCajas('fecha_desc');
+                          }}
+                          style={{
+                            background: '#f1f5f9',
+                            color: '#64748b',
+                            border: 'none',
+                            padding: '0.7rem 1.2rem',
+                            borderRadius: 8,
+                            fontWeight: 700,
+                            fontSize: '1rem',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          🗑️ Limpiar filtros
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Contador de resultados */}
+                    <div style={{ 
+                      marginTop: 16, 
+                      padding: '0.8rem', 
+                      background: '#f8fafc', 
+                      borderRadius: 8, 
+                      border: '1px solid #e2e8f0',
+                      textAlign: 'center'
+                    }}>
+                      <span style={{ fontWeight: 600, color: '#64748b' }}>
+                        📊 Mostrando {obtenerCajasFiltradas().length} de {cajas.length} cajas
+                      </span>
+                    </div>
+                  </>
+                )}
+              </div>
+              
               {loadingCajas ? (
                 <div style={{ textAlign: 'center', padding: '2rem', color: '#64748b' }}>Cargando cajas...</div>
               ) : errorCajas ? (
                 <div style={{ color: '#dc2626', textAlign: 'center', padding: '2rem' }}>{errorCajas}</div>
-              ) : cajas.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: '2rem', color: '#64748b' }}>No hay cajas registradas</div>
+              ) : obtenerCajasFiltradas().length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '2rem', color: '#64748b' }}>
+                  {cajas.length === 0 ? 'No hay cajas registradas' : 'No hay cajas que coincidan con los filtros'}
+                </div>
               ) : (
                 <div style={{ maxHeight: '70vh', overflowY: 'auto' }}>
-                  {cajas.map((caja, index) => (
+                  {obtenerCajasFiltradas().map((caja, index) => (
                     <div key={caja.id} style={{ 
                       border: '1px solid #e2e8f0', 
                       borderRadius: 12, 
@@ -2146,6 +2786,81 @@ window.open(urlWhatsApp, '_blank');
                     </div>
                   </div>
 
+                  {/* Caja con mayor venta */}
+                  <div style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: 16, padding: '1.5rem', marginBottom: 32 }}>
+                    <h3 style={{ color: '#1e293b', fontWeight: 700, marginBottom: 16 }}>🏆 Caja con Mayor Venta</h3>
+                    {obtenerCajaConMayorVenta() ? (
+                      <div style={{ 
+                        background: 'linear-gradient(135deg, #fbbf24, #f59e0b)', 
+                        borderRadius: 12, 
+                        padding: '1.5rem',
+                        color: '#1e293b'
+                      }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: 20 }}>
+                          {/* Información principal */}
+                          <div>
+                            <div style={{ fontSize: 14, opacity: 0.8, marginBottom: 8 }}>💰 Total Vendido</div>
+                            <div style={{ fontSize: 32, fontWeight: 800, marginBottom: 16 }}>
+                              {formatearPrecio((obtenerCajaConMayorVenta().efectivo || 0) + (obtenerCajaConMayorVenta().transferencia || 0) + (obtenerCajaConMayorVenta().pos || 0))}
+                            </div>
+                            <div style={{ fontSize: 14, opacity: 0.8 }}>
+                              {obtenerCajaConMayorVenta().cantidadVentas || 0} ventas • {obtenerCajaConMayorVenta().cantidadProductos || 0} productos
+                            </div>
+                          </div>
+
+                          {/* Detalles del vendedor y turno */}
+                          <div>
+                            <div style={{ fontSize: 14, opacity: 0.8, marginBottom: 8 }}>👤 Vendedor</div>
+                            <div style={{ fontSize: 24, fontWeight: 700, marginBottom: 8 }}>
+                              {obtenerCajaConMayorVenta().empleado}
+                            </div>
+                            <div style={{ fontSize: 14, opacity: 0.8, marginBottom: 8 }}>🕐 Turno</div>
+                            <div style={{ fontSize: 20, fontWeight: 600 }}>
+                              {obtenerCajaConMayorVenta().turno}
+                            </div>
+                          </div>
+
+                          {/* Fechas */}
+                          <div>
+                            <div style={{ fontSize: 14, opacity: 0.8, marginBottom: 8 }}>📅 Fechas</div>
+                            <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 4 }}>
+                              Apertura: {obtenerCajaConMayorVenta().fechaApertura}
+                            </div>
+                            <div style={{ fontSize: 16, fontWeight: 600 }}>
+                              Cierre: {obtenerCajaConMayorVenta().fechaCierre}
+                            </div>
+                          </div>
+
+                          {/* Métodos de pago */}
+                          <div>
+                            <div style={{ fontSize: 14, opacity: 0.8, marginBottom: 8 }}>💳 Métodos de Pago</div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                              {(obtenerCajaConMayorVenta().efectivo || 0) > 0 && (
+                                <div style={{ fontSize: 14, fontWeight: 600 }}>
+                                  💵 Efectivo: {formatearPrecio(obtenerCajaConMayorVenta().efectivo)}
+                                </div>
+                              )}
+                              {(obtenerCajaConMayorVenta().transferencia || 0) > 0 && (
+                                <div style={{ fontSize: 14, fontWeight: 600 }}>
+                                  🏦 Transferencia: {formatearPrecio(obtenerCajaConMayorVenta().transferencia)}
+                                </div>
+                              )}
+                              {(obtenerCajaConMayorVenta().pos || 0) > 0 && (
+                                <div style={{ fontSize: 14, fontWeight: 600 }}>
+                                  💳 POS: {formatearPrecio(obtenerCajaConMayorVenta().pos)}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div style={{ textAlign: 'center', color: '#64748b', padding: '2rem' }}>
+                        No hay cajas registradas para mostrar
+                      </div>
+                    )}
+                  </div>
+
                   {/* Top productos vendidos */}
                   <div style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: 16, padding: '1.5rem', marginBottom: 32 }}>
                     <h3 style={{ color: '#1e293b', fontWeight: 700, marginBottom: 16 }}>Top 10 Productos Más Vendidos</h3>
@@ -2405,7 +3120,7 @@ window.open(urlWhatsApp, '_blank');
                   {/* Ordenamiento */}
                   <div style={{ minWidth: 150 }}>
                     <label style={{ display: 'block', fontWeight: 600, color: '#64748b', marginBottom: 6 }}>
-                      📊 Ordenar por stock
+                      �� Ordenar por stock
                     </label>
                     <select 
                       value={ordenStock} 
