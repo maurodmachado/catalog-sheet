@@ -9,22 +9,28 @@
       }
     }
   ],
+  "routes": [
+    {
+      "src": "/api/(.*)",
+      "dest": "https://catalog-sheet-backend.onrender.com/api/$1"
+    },
+    {
+      "src": "/admin",
+      "dest": "/index.html"
+    },
+    {
+      "src": "/admin/(.*)",
+      "dest": "/index.html"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/index.html"
+    }
+  ],
   "rewrites": [
     {
       "source": "/api/(.*)",
       "destination": "https://catalog-sheet-backend.onrender.com/api/$1"
-    },
-    {
-      "source": "/admin",
-      "destination": "/index.html"
-    },
-    {
-      "source": "/admin/(.*)",
-      "destination": "/index.html"
-    },
-    {
-      "source": "/(.*)",
-      "destination": "/index.html"
     }
   ]
 } 
