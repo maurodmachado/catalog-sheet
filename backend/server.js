@@ -1411,7 +1411,7 @@ app.put('/api/stock/:id', async (req, res) => {
     const descripcionIdx = headers.findIndex(h => h.toLowerCase().includes('descripcion'));
 
     // Encontrar la fila del producto
-    const filaProducto = parseInt(id) + 2; // +2 porque el ID es 0-indexed, tenemos header en fila 1, y productos empiezan en fila 2
+    const filaProducto = parseInt(id) + 1; // +1 porque el ID es 1-indexed y tenemos header en fila 1
     if (filaProducto > rows.length) {
       return res.json({ success: true, message: 'Producto no encontrado' });
     }
@@ -1497,7 +1497,7 @@ app.post('/api/stock/:id/agregar', async (req, res) => {
     const headers = rows[0];
     const stockIdx = headers.findIndex(h => h.toLowerCase().includes('stock'));
 
-    const filaProducto = parseInt(id) + 2; // +2 porque el ID es 0-indexed, tenemos header en fila 1, y productos empiezan en fila 2
+    const filaProducto = parseInt(id) + 1; // +1 porque el ID es 1-indexed y tenemos header en fila 1
     if (filaProducto > rows.length) {
       return res.json({ success: true, message: 'Producto no encontrado' });
     }
