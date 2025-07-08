@@ -160,6 +160,7 @@ export default function Admin() {
         setError('');
         localStorage.setItem('adminLogueado', '1');
         localStorage.setItem('adminUsuario', data.usuario);
+        localStorage.setItem('adminToken', data.token); // Guardar el token
       } else {
         setError(data.message || 'Usuario o contraseña incorrectos');
       }
@@ -176,6 +177,42 @@ export default function Admin() {
     setPassword('');
     localStorage.removeItem('adminLogueado');
     localStorage.removeItem('adminUsuario');
+    localStorage.removeItem('adminToken'); // Remover el token
+  };
+
+  // --- Función para peticiones autenticadas ---
+  const fetchWithAuth = async (url, options = {}) => {
+    const token = localStorage.getItem('adminToken');
+    if (!token) {
+      throw new Error('No hay token de autenticación');
+    }
+
+    const res = await fetch(url, {
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+        ...options.headers
+      }
+    });
+
+    if (res.status === 401) {
+      // Token expirado o inválido
+      localStorage.removeItem('adminToken');
+      localStorage.removeItem('adminLogueado');
+      localStorage.removeItem('adminUsuario');
+      setLogueado(false);
+      throw new Error('Sesión expirada. Por favor, inicia sesión nuevamente.');
+    }
+
+    if (!res.ok) {
+      if (res.status === 429) {
+        throw new Error('Demasiadas peticiones. Intenta de nuevo en unos segundos.');
+      }
+      throw new Error(`Error ${res.status}: ${res.statusText}`);
+    }
+
+    return res;
   };
 
   // --- Función de utilidad para peticiones con delay ---
@@ -207,7 +244,7 @@ export default function Admin() {
     setErrorProductos('');
     try {
       const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3001') + '/api';
-      const res = await fetchWithDelay(`${API_URL}/productos`);
+      const res = await fetchWithAuth(`${API_URL}/productos`);
       const data = await res.json();
       setProductos(data);
     } catch (err) {
@@ -345,7 +382,7 @@ export default function Admin() {
       };
 
       const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3001') + '/api';
-      const res = await fetch(`${API_URL}/ventas`, {
+      const res = await fetchWithAuth(`${API_URL}/ventas`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(ventaData)
@@ -434,7 +471,7 @@ export default function Admin() {
     setLoadingCaja(true); setErrorCaja(''); setMensajeCaja('');
     try {
       const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3001') + '/api';
-      const res = await fetch(`${API_URL}/caja/abrir`, {
+      const res = await fetchWithAuth(`${API_URL}/caja/abrir`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ turno, empleado: empleadoCaja, montoApertura })
@@ -458,7 +495,7 @@ export default function Admin() {
     setLoadingCaja(true); setErrorCaja(''); setMensajeCaja('');
     try {
       const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3001') + '/api';
-      const res = await fetch(`${API_URL}/caja/cerrar`, { 
+      const res = await fetchWithAuth(`${API_URL}/caja/cerrar`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ montoCierre: Number(montoCierre) || 30000 })
@@ -755,26 +792,25 @@ window.open(urlWhatsApp, '_blank');
     // Filtrar por fecha específica
     if (filtroFechaVentas) {
       ventasFiltradas = ventasFiltradas.filter(venta => {
-        const fechaVenta = new Date(venta.fecha).toISOString().split('T')[0];
-        return fechaVenta === filtroFechaVentas;
+        const fechaVenta = normalizarFecha(venta.fecha);
+        const filtroNormalizado = normalizarFecha(filtroFechaVentas);
+        return fechaVenta === filtroNormalizado;
       });
     }
     
     // Filtrar por mes
     if (filtroMesVentas) {
       ventasFiltradas = ventasFiltradas.filter(venta => {
-        const fechaVenta = new Date(venta.fecha);
-        const mesVenta = fechaVenta.getMonth() + 1; // getMonth() devuelve 0-11
-        return mesVenta === parseInt(filtroMesVentas);
+        const { mes } = extraerMesYAnio(venta.fecha);
+        return mes === parseInt(filtroMesVentas);
       });
     }
     
     // Filtrar por año
     if (filtroAnioVentas) {
       ventasFiltradas = ventasFiltradas.filter(venta => {
-        const fechaVenta = new Date(venta.fecha);
-        const anioVenta = fechaVenta.getFullYear();
-        return anioVenta === parseInt(filtroAnioVentas);
+        const { anio } = extraerMesYAnio(venta.fecha);
+        return anio === parseInt(filtroAnioVentas);
       });
     }
     
@@ -821,7 +857,7 @@ window.open(urlWhatsApp, '_blank');
         setEliminandoVenta(idVenta);
         try {
           const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3001') + '/api';
-          const res = await fetch(`${API_URL}/ventas/${idVenta}`, {
+          const res = await fetchWithAuth(`${API_URL}/ventas/${idVenta}`, {
             method: 'DELETE'
           });
           
@@ -895,8 +931,9 @@ window.open(urlWhatsApp, '_blank');
     // Filtrar por fecha específica
     if (filtroFechaCajas) {
       cajasFiltradas = cajasFiltradas.filter(caja => {
-        const fechaCaja = new Date(caja.fechaApertura).toISOString().split('T')[0];
-        return fechaCaja === filtroFechaCajas;
+        const fechaCaja = normalizarFecha(caja.fechaApertura);
+        const filtroNormalizado = normalizarFecha(filtroFechaCajas);
+        return fechaCaja === filtroNormalizado;
       });
     }
     
@@ -910,18 +947,16 @@ window.open(urlWhatsApp, '_blank');
     // Filtrar por mes
     if (filtroMesCajas) {
       cajasFiltradas = cajasFiltradas.filter(caja => {
-        const fechaCaja = new Date(caja.fechaApertura);
-        const mesCaja = fechaCaja.getMonth() + 1; // getMonth() devuelve 0-11
-        return mesCaja === parseInt(filtroMesCajas);
+        const { mes } = extraerMesYAnio(caja.fechaApertura);
+        return mes === parseInt(filtroMesCajas);
       });
     }
     
     // Filtrar por año
     if (filtroAnioCajas) {
       cajasFiltradas = cajasFiltradas.filter(caja => {
-        const fechaCaja = new Date(caja.fechaApertura);
-        const anioCaja = fechaCaja.getFullYear();
-        return anioCaja === parseInt(filtroAnioCajas);
+        const { anio } = extraerMesYAnio(caja.fechaApertura);
+        return anio === parseInt(filtroAnioCajas);
       });
     }
     
@@ -1139,7 +1174,7 @@ window.open(urlWhatsApp, '_blank');
       }
       
       // Actualizar producto - usar el ID correcto
-      const res = await fetch(`${API_URL}/stock/${productoSeleccionadoStock.id}`, {
+      const res = await fetchWithAuth(`${API_URL}/stock/${productoSeleccionadoStock.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updateData)
@@ -1154,12 +1189,12 @@ window.open(urlWhatsApp, '_blank');
       
       // Crear mensaje específico según qué se actualizó
       const cambios = [];
-      if (updateData.precio !== undefined) cambios.push(`precio: $${formatearPrecio(updateData.precio)}`);
+      if (updateData.precio !== undefined) cambios.push(`Nuevo precio: ${formatearPrecio(updateData.precio)}`);
       if (updateData.categoria !== undefined) cambios.push(`categoría: ${updateData.categoria}`);
       if (updateData.descripcion !== undefined) cambios.push(`descripción actualizada`);
       
       const mensaje = cambios.length > 0 
-        ? `✅ "${productoSeleccionadoStock.nombre}" actualizado: ${cambios.join(', ')}`
+        ? `✅ "${productoSeleccionadoStock.nombre}". ${cambios.join(', ')}`
         : `✅ "${productoSeleccionadoStock.nombre}" actualizado correctamente`;
       
       mostrarNotificacion(mensaje, 'success');
@@ -1203,7 +1238,7 @@ window.open(urlWhatsApp, '_blank');
       const url = `${API_URL}/stock/${productoSeleccionadoStock.id}/agregar`;
       const body = { cantidad: Number(cantidadAgregar) };
       
-      const res = await fetch(url, {
+      const res = await fetchWithAuth(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body)
@@ -1401,7 +1436,7 @@ window.open(urlWhatsApp, '_blank');
           // Actualizar producto - usar el ID correcto
           const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3001') + '/api';
           
-          const res = await fetch(`${API_URL}/stock/${producto.id}`, {
+          const res = await fetchWithAuth(`${API_URL}/stock/${producto.id}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ precio: precioRedondeado })
@@ -1501,6 +1536,55 @@ window.open(urlWhatsApp, '_blank');
         </form>
       </div>
     );
+  }
+
+  // Utilidad para normalizar fechas a yyyy-mm-dd
+  function normalizarFecha(fecha) {
+    if (!fecha) return '';
+    if (typeof fecha === 'string' && fecha.match(/^\d{4}-\d{2}-\d{2}$/)) return fecha;
+    // dd/mm/yyyy, dd-mm-yyyy, dd/mm/yy, dd-mm-yy
+    const partes = fecha.split(/[\/\-]/);
+    if (partes.length === 3) {
+      let [dia, mes, anio] = partes;
+      // Si año es de 2 dígitos, asumir 20xx
+      if (anio.length === 2) anio = '20' + anio;
+      if (anio.length === 4) return `${anio}-${mes.padStart(2, '0')}-${dia.padStart(2, '0')}`;
+      // Si viene yyyy-mm-dd
+      if (dia.length === 4) return `${dia}-${mes.padStart(2, '0')}-${anio.padStart(2, '0')}`;
+    }
+    // Intentar con Date
+    const d = new Date(fecha);
+    if (!isNaN(d)) {
+      return d.toISOString().split('T')[0];
+    }
+    return '';
+  }
+
+  // Utilidad para extraer mes y año de cualquier formato de fecha
+  function extraerMesYAnio(fecha) {
+    if (!fecha) return { mes: null, anio: null };
+    // yyyy-mm-dd
+    if (typeof fecha === 'string' && fecha.match(/^\d{4}-\d{2}-\d{2}$/)) {
+      const [anio, mes] = fecha.split('-');
+      return { mes: parseInt(mes), anio: parseInt(anio) };
+    }
+    // dd/mm/yyyy o dd-mm-yyyy
+    const partes = fecha.split(/[\/\-]/);
+    if (partes.length === 3) {
+      if (partes[2].length === 4) {
+        // dd/mm/yyyy
+        return { mes: parseInt(partes[1]), anio: parseInt(partes[2]) };
+      } else if (partes[0].length === 4) {
+        // yyyy-mm-dd
+        return { mes: parseInt(partes[1]), anio: parseInt(partes[0]) };
+      }
+    }
+    // Intentar con Date
+    const d = new Date(fecha);
+    if (!isNaN(d)) {
+      return { mes: d.getMonth() + 1, anio: d.getFullYear() };
+    }
+    return { mes: null, anio: null };
   }
 
   return (
@@ -2893,7 +2977,7 @@ window.open(urlWhatsApp, '_blank');
                               </div>
                               <span style={{ fontWeight: 600, color: '#1e293b' }}>{producto.producto}</span>
                             </div>
-                            <div style={{ fontWeight: 700, color: '#059669', fontSize: 18 }}>{producto.cantidad} unidades</div>
+                            <div style={{ fontWeight: 700, color: '#059669', fontSize: 18 }}>{producto.cantidad} {producto.cantidad === 1 ? 'unidad' : 'unidades'}</div>
                           </div>
                         ))}
                       </div>
@@ -3120,7 +3204,7 @@ window.open(urlWhatsApp, '_blank');
                   {/* Ordenamiento */}
                   <div style={{ minWidth: 150 }}>
                     <label style={{ display: 'block', fontWeight: 600, color: '#64748b', marginBottom: 6 }}>
-                      �� Ordenar por stock
+                      ↕️ Ordenar por stock
                     </label>
                     <select 
                       value={ordenStock} 
