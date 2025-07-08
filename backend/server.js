@@ -19,6 +19,7 @@ const path = require('path');
 const jwt = require('jsonwebtoken');
 
 const app = express();
+app.set('trust proxy', 1); // Confiar en el primer proxy (Render, Vercel, etc)
 const PORT = process.env.PORT || 3001;
 
 // Middleware de seguridad y optimización
