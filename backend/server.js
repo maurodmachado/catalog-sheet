@@ -16,6 +16,7 @@ const compression = require('compression');
 require('dotenv').config();
 const fs = require('fs');
 const path = require('path');
+const jwt = require('jsonwebtoken');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -128,114 +129,56 @@ function formatearHora() {
   });
 }
 
-// Ruta para obtener todos los productos
-app.get('/api/productos', async (req, res) => {
-  try {
-    const response = await sheets.spreadsheets.values.get({
-      spreadsheetId: SPREADSHEET_ID,
-      range: RANGE,
-    });
+// --- JWT ---
+const TOKEN_SECRET = process.env.TOKEN_SECRET || 'alnortegrow-secret';
+const TOKEN_EXPIRATION = '24h';
 
-    const rows = response.data.values;
-    if (!rows || rows.length === 0) {
-      return res.json([]);
+// Cache de tokens válidos (en memoria)
+const tokenCache = new Map(); // key: usuario, value: { token, exp }
+
+// Middleware para proteger rutas
+function requireAuth(req, res, next) {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1];
+  if (!token) return res.status(401).json({ success: false, message: 'Token requerido' });
+  // Buscar en cache
+  for (const [usuario, data] of tokenCache.entries()) {
+    if (data.token === token && data.exp > Date.now()) {
+      req.usuario = usuario;
+      return next();
     }
-
-    // Convertir filas a objetos de productos
-    const productos = rows.slice(1).map((row, index) => ({
-      id: index + 1,
-      nombre: row[0] || '',
-      categoria: row[1] || '',
-      precio: parseFloat(row[2]) || 0,
-      oferta: row[3] || '',
-      descripcion: row[4] || '',
-      imagen: row[5] || '',
-      stock: row[6] !== undefined ? row[6] : '',
-    }));
-
-    res.json(productos);
-  } catch (error) {
-    console.error('Error al leer Google Sheets:', error);
-    res.status(500).json({ error: 'Error al obtener productos' });
   }
-});
-
-// Ruta para obtener productos por categoría
-app.get('/api/productos/categoria/:categoria', async (req, res) => {
-  try {
-    const { categoria } = req.params;
-    const response = await sheets.spreadsheets.values.get({
-      spreadsheetId: SPREADSHEET_ID,
-      range: RANGE,
-    });
-
-    const rows = response.data.values;
-    if (!rows || rows.length === 0) {
-      return res.json([]);
-    }
-
-    const productos = rows.slice(1)
-      .map((row, index) => ({
-        id: index + 1,
-        nombre: row[0] || '',
-        categoria: row[1] || '',
-        precio: parseFloat(row[2]) || 0,
-        oferta: row[3] || '',
-        descripcion: row[4] || '',
-        imagen: row[5] || '',
-        stock: row[6] !== undefined ? row[6] : '',
-      }))
-      .filter(producto => 
-        producto.categoria.toLowerCase().includes(categoria.toLowerCase())
-      );
-
-    res.json(productos);
-  } catch (error) {
-    console.error('Error al leer Google Sheets:', error);
-    res.status(500).json({ error: 'Error al obtener productos' });
-  }
-});
-
-// Health check endpoint mejorado
-app.get('/api/health', (req, res) => {
-  res.json({ 
-    status: 'OK', 
-    message: 'API funcionando correctamente',
-    timestamp: new Date().toISOString(),
-    environment: process.env.NODE_ENV || 'development',
-    version: process.env.npm_package_version || '1.0.0'
+  // Verificar JWT
+  jwt.verify(token, TOKEN_SECRET, (err, decoded) => {
+    if (err) return res.status(401).json({ success: false, message: 'Token inválido o expirado' });
+    req.usuario = decoded.usuario;
+    next();
   });
-});
-
-
+}
 
 // --- AUTENTICACIÓN: endpoint para validar credenciales ---
 app.post('/api/auth/login', (req, res) => {
   try {
     const { usuario, password } = req.body;
-    
-    // Obtener credenciales desde variables de entorno
     const ADMIN_USER = process.env.ADMIN_USER || 'admin';
     const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin123';
-    
     if (usuario === ADMIN_USER && password === ADMIN_PASSWORD) {
-      res.json({ 
-        success: true, 
-        message: 'Autenticación exitosa',
-        usuario: ADMIN_USER
-      });
+      // Buscar token en cache
+      const cached = tokenCache.get(usuario);
+      if (cached && cached.exp > Date.now()) {
+        return res.json({ success: true, message: 'Autenticación exitosa', usuario: ADMIN_USER, token: cached.token });
+      }
+      // Generar token nuevo
+      const token = jwt.sign({ usuario }, TOKEN_SECRET, { expiresIn: TOKEN_EXPIRATION });
+      const exp = Date.now() + 24 * 60 * 60 * 1000;
+      tokenCache.set(usuario, { token, exp });
+      return res.json({ success: true, message: 'Autenticación exitosa', usuario: ADMIN_USER, token });
     } else {
-      res.status(401).json({ 
-        success: false, 
-        message: 'Usuario o contraseña incorrectos' 
-      });
+      res.status(401).json({ success: false, message: 'Usuario o contraseña incorrectos' });
     }
   } catch (error) {
     console.error('Error en autenticación:', error);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Error interno del servidor' 
-    });
+    res.status(500).json({ success: false, message: 'Error interno del servidor' });
   }
 });
 
@@ -268,7 +211,7 @@ function guardarCaja() {
 }
 
 // Abrir caja
-app.post('/api/caja/abrir', async (req, res) => {
+app.post('/api/caja/abrir', requireAuth, async (req, res) => {
   try {
     const { turno, empleado, montoApertura } = req.body;
     if (process.env.NODE_ENV === 'test') {
@@ -365,7 +308,7 @@ function registrarVentaEnCaja(venta) {
 }
 
 // Cerrar caja
-app.post('/api/caja/cerrar', async (req, res) => {
+app.post('/api/caja/cerrar', requireAuth, async (req, res) => {
   try {
     if (!cajaActual || !cajaActual.abierta) {
       return res.status(400).json({ error: 'No hay caja abierta' });
@@ -410,7 +353,7 @@ app.post('/api/caja/cerrar', async (req, res) => {
 });
 
 // --- MODIFICAR /api/ventas para bloquear si caja cerrada y registrar en caja ---
-app.post('/api/ventas', async (req, res) => {
+app.post('/api/ventas', requireAuth, async (req, res) => {
   // Permitir registrar ventas en modo test
   if (process.env.NODE_ENV !== 'test' && (!cajaActual || !cajaActual.abierta)) {
     return res.status(403).json({ error: 'No se puede registrar venta: la caja está cerrada' });
@@ -1386,7 +1329,7 @@ app.get('/api/stock', async (req, res) => {
 });
 
 // Actualizar stock de un producto
-app.put('/api/stock/:id', async (req, res) => {
+app.put('/api/stock/:id', requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
     const { stock, precio, categoria, descripcion } = req.body;
@@ -1473,7 +1416,7 @@ app.put('/api/stock/:id', async (req, res) => {
 });
 
 // Agregar stock a un producto (incrementar)
-app.post('/api/stock/:id/agregar', async (req, res) => {
+app.post('/api/stock/:id/agregar', requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
     const { cantidad } = req.body;
@@ -1611,7 +1554,7 @@ app.get('/api/empleados', async (req, res) => {
 });
 
 // Agregar nuevo empleado
-app.post('/api/empleados', async (req, res) => {
+app.post('/api/empleados', requireAuth, async (req, res) => {
   try {
     const { nombre } = req.body;
     
@@ -1645,7 +1588,7 @@ app.post('/api/empleados', async (req, res) => {
 });
 
 // Actualizar empleado
-app.put('/api/empleados/:id', async (req, res) => {
+app.put('/api/empleados/:id', requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
     const { nombre } = req.body;
@@ -1674,7 +1617,7 @@ app.put('/api/empleados/:id', async (req, res) => {
 // ===== ENDPOINTS PARA GENERACIÓN DE PRESUPUESTOS =====
 
 // Generar presupuesto PDF
-app.post('/api/presupuesto/generar', async (req, res) => {
+app.post('/api/presupuesto/generar', requireAuth, async (req, res) => {
   try {
     const { productos, cliente, observaciones, empleado } = req.body;
     
