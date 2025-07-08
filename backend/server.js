@@ -1885,3 +1885,65 @@ app.listen(PORT, () => {
 module.exports = app;
 module.exports.formatearFecha = formatearFecha;
 module.exports.formatearHora = formatearHora; 
+
+// Ruta para obtener todos los productos (protegida)
+app.get('/api/productos', requireAuth, async (req, res) => {
+  try {
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId: SPREADSHEET_ID,
+      range: RANGE,
+    });
+    const rows = response.data.values;
+    if (!rows || rows.length === 0) {
+      return res.json([]);
+    }
+    // Convertir filas a objetos de productos
+    const productos = rows.slice(1).map((row, index) => ({
+      id: index + 1,
+      nombre: row[0] || '',
+      categoria: row[1] || '',
+      precio: parseFloat(row[2]) || 0,
+      oferta: row[3] || '',
+      descripcion: row[4] || '',
+      imagen: row[5] || '',
+      stock: row[6] !== undefined ? row[6] : '',
+    }));
+    res.json(productos);
+  } catch (error) {
+    console.error('Error al leer Google Sheets:', error);
+    res.status(500).json({ error: 'Error al obtener productos' });
+  }
+});
+
+// Ruta para obtener productos por categoría (protegida)
+app.get('/api/productos/categoria/:categoria', requireAuth, async (req, res) => {
+  try {
+    const { categoria } = req.params;
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId: SPREADSHEET_ID,
+      range: RANGE,
+    });
+    const rows = response.data.values;
+    if (!rows || rows.length === 0) {
+      return res.json([]);
+    }
+    const productos = rows.slice(1)
+      .map((row, index) => ({
+        id: index + 1,
+        nombre: row[0] || '',
+        categoria: row[1] || '',
+        precio: parseFloat(row[2]) || 0,
+        oferta: row[3] || '',
+        descripcion: row[4] || '',
+        imagen: row[5] || '',
+        stock: row[6] !== undefined ? row[6] : '',
+      }))
+      .filter(producto => 
+        producto.categoria.toLowerCase().includes(categoria.toLowerCase())
+      );
+    res.json(productos);
+  } catch (error) {
+    console.error('Error al leer Google Sheets:', error);
+    res.status(500).json({ error: 'Error al obtener productos' });
+  }
+});
