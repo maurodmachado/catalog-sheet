@@ -73,6 +73,11 @@ app.use(cors({
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
+// Endpoint de ping para mantener viva la app
+app.get('/ping', (req, res) => {
+  res.json({ ok: true, message: 'pong' });
+});
+
 // Soporte para Render: escribir credentials.json desde variable de entorno
 if (process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON) {
   const credPath = path.join(__dirname, 'credentials.json');

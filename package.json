@@ -19,7 +19,13 @@
     "lint:frontend": "cd frontend && npm run lint",
     "deploy": "npm run build && npm run test"
   },
-  "keywords": ["catalog", "google-sheets", "products", "react", "nodejs"],
+  "keywords": [
+    "catalog",
+    "google-sheets",
+    "products",
+    "react",
+    "nodejs"
+  ],
   "author": "Mauro Catalog System",
   "license": "MIT",
   "devDependencies": {
@@ -28,5 +34,8 @@
   "engines": {
     "node": ">=18.0.0",
     "npm": ">=8.0.0"
+  },
+  "dependencies": {
+    "jsonwebtoken": "^9.0.2"
   }
-} 
+}

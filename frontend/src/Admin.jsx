@@ -244,7 +244,7 @@ export default function Admin() {
     setErrorProductos('');
     try {
       const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3001') + '/api';
-      const res = await fetchWithAuth(`${API_URL}/productos`);
+      const res = await fetchWithDelay(`${API_URL}/productos`);
       const data = await res.json();
       setProductos(data);
     } catch (err) {
