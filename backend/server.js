@@ -220,6 +220,7 @@ function guardarCaja() {
 app.post('/api/caja/abrir', requireAuth, async (req, res) => {
   try {
     const { turno, empleado, montoApertura } = req.body;
+    console.log('ABRIR CAJA - recibido:', { turno, empleado, montoApertura });
     if (process.env.NODE_ENV === 'test') {
       cajaActual = {
         abierta: true,
@@ -235,6 +236,7 @@ app.post('/api/caja/abrir', requireAuth, async (req, res) => {
         cantidadProductos: 0,
         totalVendido: 0
       };
+      console.log('ABRIR CAJA - cajaActual:', cajaActual);
       return res.json({ success: true, caja: cajaActual });
     }
     if (cajaActual && cajaActual.abierta) {
@@ -258,6 +260,7 @@ app.post('/api/caja/abrir', requireAuth, async (req, res) => {
       totalVendido: 0
     };
     guardarCaja();
+    console.log('ABRIR CAJA - cajaActual guardada:', cajaActual);
     res.json({ success: true, caja: cajaActual });
   } catch (error) {
     res.status(500).json({ error: 'Error al abrir caja' });
@@ -272,6 +275,7 @@ app.get('/api/caja/estado', async (req, res) => {
       const cajaData = fs.readFileSync(CAJA_FILE, 'utf8');
       cajaActual = JSON.parse(cajaData);
     }
+    console.log('ESTADO CAJA - cajaActual:', cajaActual);
     if (!cajaActual) {
       return res.json({ success: false, message: 'No hay caja abierta' });
     }
