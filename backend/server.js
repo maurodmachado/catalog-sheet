@@ -267,6 +267,11 @@ app.post('/api/caja/abrir', requireAuth, async (req, res) => {
 // Endpoint para consultar estado de caja
 app.get('/api/caja/estado', async (req, res) => {
   try {
+    // Recargar cajaActual desde archivo para máxima robustez
+    if (fs.existsSync(CAJA_FILE)) {
+      const cajaData = fs.readFileSync(CAJA_FILE, 'utf8');
+      cajaActual = JSON.parse(cajaData);
+    }
     if (!cajaActual) {
       return res.json({ success: false, message: 'No hay caja abierta' });
     }
@@ -316,6 +321,11 @@ function registrarVentaEnCaja(venta) {
 // Cerrar caja
 app.post('/api/caja/cerrar', requireAuth, async (req, res) => {
   try {
+    // Recargar cajaActual desde archivo antes de cerrar
+    if (fs.existsSync(CAJA_FILE)) {
+      const cajaData = fs.readFileSync(CAJA_FILE, 'utf8');
+      cajaActual = JSON.parse(cajaData);
+    }
     if (!cajaActual || !cajaActual.abierta) {
       return res.status(400).json({ error: 'No hay caja abierta' });
     }
