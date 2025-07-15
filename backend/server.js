@@ -330,11 +330,16 @@ app.post('/api/caja/cerrar', requireAuth, async (req, res) => {
       return res.status(400).json({ error: 'No hay caja abierta' });
     }
     const { montoCierre } = req.body;
+    // Log para depuración
+    console.log('CERRAR CAJA - cajaActual:', cajaActual);
+    console.log('CERRAR CAJA - montoCierre recibido:', montoCierre);
     const fechaCierre = formatearFecha();
     const horaCierre = formatearHora();
     // Registrar en hoja Caja
     const CAJA_RANGE = 'Caja!A:N';
-    const montoCierreReal = (montoCierre !== undefined && montoCierre !== null && montoCierre !== "") ? Number(montoCierre) : cajaActual.montoApertura;
+    // Usar montoApertura solo si montoCierre es undefined, null o string vacío
+    const montoCierreReal = (montoCierre === undefined || montoCierre === null || montoCierre === "") ? cajaActual.montoApertura : Number(montoCierre);
+    console.log('CERRAR CAJA - montoCierreReal usado:', montoCierreReal);
     const fila = [
       cajaActual.fechaAperturaSeparada,  // Fecha apertura
       cajaActual.horaApertura,           // Hora apertura
