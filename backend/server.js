@@ -250,7 +250,7 @@ app.post('/api/caja/abrir', requireAuth, async (req, res) => {
       fechaApertura,
       fechaAperturaSeparada,
       horaApertura,
-      montoApertura: Number(montoApertura) || 30000,
+      montoApertura: (montoApertura !== undefined && montoApertura !== null && montoApertura !== "") ? Number(montoApertura) : 30000,
       ventas: [],
       totales: { efectivo: 0, transferencia: 0, pos: 0 },
       cantidadVentas: 0,
@@ -324,7 +324,7 @@ app.post('/api/caja/cerrar', requireAuth, async (req, res) => {
     const horaCierre = formatearHora();
     // Registrar en hoja Caja
     const CAJA_RANGE = 'Caja!A:N';
-    const montoCierreReal = Number(montoCierre) || 30000;
+    const montoCierreReal = (montoCierre !== undefined && montoCierre !== null && montoCierre !== "") ? Number(montoCierre) : cajaActual.montoApertura;
     const fila = [
       cajaActual.fechaAperturaSeparada,  // Fecha apertura
       cajaActual.horaApertura,           // Hora apertura
