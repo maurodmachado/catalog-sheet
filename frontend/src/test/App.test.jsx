@@ -341,7 +341,7 @@ describe('App Component', () => {
       render(<App />);
       
       // Verificar que los elementos se renderizan correctamente
-      expect(screen.getByText('Catálogo de Productos')).toBeInTheDocument();
+      expect(screen.getByText('ALNORTEGROW')).toBeInTheDocument();
     });
   });
 }); 

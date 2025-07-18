@@ -17,6 +17,7 @@ require('dotenv').config();
 const fs = require('fs');
 const path = require('path');
 const jwt = require('jsonwebtoken');
+const bcrypt = require('bcryptjs');
 
 const app = express();
 app.set('trust proxy', 1); // Confiar en el primer proxy (Render, Vercel, etc)
@@ -220,7 +221,6 @@ function guardarCaja() {
 app.post('/api/caja/abrir', requireAuth, async (req, res) => {
   try {
     const { turno, empleado, montoApertura } = req.body;
-    console.log('ABRIR CAJA - recibido:', { turno, empleado, montoApertura });
     if (process.env.NODE_ENV === 'test') {
       cajaActual = {
         abierta: true,
@@ -236,7 +236,6 @@ app.post('/api/caja/abrir', requireAuth, async (req, res) => {
         cantidadProductos: 0,
         totalVendido: 0
       };
-      console.log('ABRIR CAJA - cajaActual:', cajaActual);
       return res.json({ success: true, caja: cajaActual });
     }
     if (cajaActual && cajaActual.abierta) {
@@ -260,7 +259,6 @@ app.post('/api/caja/abrir', requireAuth, async (req, res) => {
       totalVendido: 0
     };
     guardarCaja();
-    console.log('ABRIR CAJA - cajaActual guardada:', cajaActual);
     res.json({ success: true, caja: cajaActual });
   } catch (error) {
     res.status(500).json({ error: 'Error al abrir caja' });
@@ -275,7 +273,6 @@ app.get('/api/caja/estado', async (req, res) => {
       const cajaData = fs.readFileSync(CAJA_FILE, 'utf8');
       cajaActual = JSON.parse(cajaData);
     }
-    console.log('ESTADO CAJA - cajaActual:', cajaActual);
     if (!cajaActual) {
       return res.json({ success: false, message: 'No hay caja abierta' });
     }
@@ -334,16 +331,12 @@ app.post('/api/caja/cerrar', requireAuth, async (req, res) => {
       return res.status(400).json({ error: 'No hay caja abierta' });
     }
     const { montoCierre } = req.body;
-    // Log para depuración
-    console.log('CERRAR CAJA - cajaActual:', cajaActual);
-    console.log('CERRAR CAJA - montoCierre recibido:', montoCierre);
     const fechaCierre = formatearFecha();
     const horaCierre = formatearHora();
     // Registrar en hoja Caja
     const CAJA_RANGE = 'Caja!A:N';
     // Usar montoApertura solo si montoCierre es undefined, null o string vacío
     const montoCierreReal = (montoCierre === undefined || montoCierre === null || montoCierre === "") ? cajaActual.montoApertura : Number(montoCierre);
-    console.log('CERRAR CAJA - montoCierreReal usado:', montoCierreReal);
     const fila = [
       cajaActual.fechaAperturaSeparada,  // Fecha apertura
       cajaActual.horaApertura,           // Hora apertura
@@ -1940,6 +1933,120 @@ app.get('/api/productos/categoria/:categoria', async (req, res) => {
   }
 });
 
+// --- ENDPOINTS DE GESTIÓN DE USUARIOS ---
+const USUARIOS_RANGE = 'Usuarios!A:D'; // A: nombre, B: usuario, C: password (hash), D: rol
+
+// Listar usuarios
+app.get('/api/usuarios', requireAuth, async (req, res) => {
+  try {
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId: SPREADSHEET_ID,
+      range: USUARIOS_RANGE,
+    });
+    const rows = response.data.values;
+    if (!rows || rows.length <= 1) return res.json([]);
+    // Primera fila: headers
+    const usuarios = rows.slice(1).map((row, idx) => ({
+      id: idx + 1,
+      nombre: row[0],
+      usuario: row[1],
+      rol: row[3] || 'Empleado',
+    }));
+    res.json(usuarios);
+  } catch (error) {
+    console.error('Error al listar usuarios:', error);
+    res.status(500).json({ error: 'Error interno al listar usuarios' });
+  }
+});
+
+// Crear usuario
+app.post('/api/usuarios', requireAuth, async (req, res) => {
+  try {
+    if (req.usuario !== (process.env.ADMIN_USER || 'admin')) return res.status(403).json({ error: 'Solo el administrador puede crear usuarios' });
+    const { nombre, usuario, password, rol } = req.body;
+    if (!nombre || !usuario || !password) return res.status(400).json({ error: 'Faltan campos requeridos' });
+    const hash = await bcrypt.hash(password, 10);
+    await sheets.spreadsheets.values.append({
+      spreadsheetId: SPREADSHEET_ID,
+      range: USUARIOS_RANGE,
+      valueInputOption: 'RAW',
+      requestBody: { values: [[nombre, usuario, hash, rol || 'Empleado']] }
+    });
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error al crear usuario:', error);
+    res.status(500).json({ error: 'Error interno al crear usuario' });
+  }
+});
+
+// Editar usuario
+app.put('/api/usuarios/:id', requireAuth, async (req, res) => {
+  try {
+    if (req.usuario !== (process.env.ADMIN_USER || 'admin')) return res.status(403).json({ error: 'Solo el administrador puede editar usuarios' });
+    const { id } = req.params;
+    const { nombre, usuario, password, rol } = req.body;
+    // Leer usuarios (filas no vacías)
+    const response = await sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: USUARIOS_RANGE });
+    const rows = response.data.values || [];
+    if (rows.length <= 1) return res.status(404).json({ error: 'No hay usuarios' });
+    // Filtrar solo filas válidas (con usuario)
+    const usuariosValidos = rows.slice(1).map((row, idx) => ({ fila: idx + 2, row })).filter(u => u.row[1]);
+    const usuarioIdx = usuariosValidos.findIndex(u => u.fila === parseInt(id) + 1);
+    if (usuarioIdx === -1) return res.status(404).json({ error: 'Usuario no encontrado' });
+    const fila = usuariosValidos[usuarioIdx].fila;
+    const hash = password ? await bcrypt.hash(password, 10) : usuariosValidos[usuarioIdx].row[2];
+    // Actualizar la fila
+    await sheets.spreadsheets.values.update({
+      spreadsheetId: SPREADSHEET_ID,
+      range: `Usuarios!A${fila}:D${fila}`,
+      valueInputOption: 'RAW',
+      requestBody: { values: [[nombre, usuario, hash, rol || 'Empleado']] }
+    });
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error al editar usuario:', error);
+    res.status(500).json({ error: 'Error interno al editar usuario' });
+  }
+});
+
+// Eliminar usuario por nombre de usuario único
+app.delete('/api/usuarios/usuario/:usuario', requireAuth, async (req, res) => {
+  try {
+    if (req.usuario !== (process.env.ADMIN_USER || 'admin')) return res.status(403).json({ error: 'Solo el administrador puede eliminar usuarios' });
+    const { usuario } = req.params;
+    const response = await sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: USUARIOS_RANGE });
+    const rows = response.data.values || [];
+    if (rows.length <= 1) return res.status(404).json({ error: 'No hay usuarios' });
+    const usuariosValidos = rows.slice(1).map((row, idx) => ({ fila: idx + 2, row })).filter(u => u.row[1]);
+    const usuarioBuscado = (usuario || '').trim().toLowerCase();
+    const usuarioObj = usuariosValidos.find(u => (u.row[1] || '').trim().toLowerCase() === usuarioBuscado);
+    if (!usuarioObj) return res.status(404).json({ error: 'Usuario no encontrado' });
+    // Obtener el sheetId numérico de la hoja 'Usuarios'
+    const sheetsMeta = await sheets.spreadsheets.get({ spreadsheetId: SPREADSHEET_ID });
+    const usuariosSheet = sheetsMeta.data.sheets.find(s => s.properties.title === 'Usuarios');
+    if (!usuariosSheet) return res.status(500).json({ error: 'No se encontró la hoja Usuarios' });
+    const sheetId = usuariosSheet.properties.sheetId;
+    await sheets.spreadsheets.batchUpdate({
+      spreadsheetId: SPREADSHEET_ID,
+      requestBody: {
+        requests: [{
+          deleteDimension: {
+            range: {
+              sheetId: sheetId,
+              dimension: 'ROWS',
+              startIndex: usuarioObj.fila - 1,
+              endIndex: usuarioObj.fila
+            }
+          }
+        }]
+      }
+    });
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error al eliminar usuario:', error);
+    res.status(500).json({ error: 'Error interno al eliminar usuario' });
+  }
+});
 // Error handling middleware mejorado
 app.use((err, req, res, next) => {
   console.error('Error no manejado:', err);

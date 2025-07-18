@@ -1,0 +1,20 @@
+{
+  "ignore": [
+    "caja.json",
+    "*.log",
+    "node_modules/*",
+    ".env",
+    "temp/*",
+    "../frontend/*",
+    "../*.env",
+    "../*.log",
+    "../*.json",
+    "package-lock.json",
+    "package.json",
+    "credentials.json",
+    "server.log",
+    "tests/*",
+    "test/*"
+  ],
+  "ext": "js"
+} 

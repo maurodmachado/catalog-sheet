@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef } from 'react';
-import whatsappLogo from './assets/whatsapp-logo.png';
 
 export default function Admin() {
   const [usuario, setUsuario] = useState('');
@@ -15,12 +14,14 @@ export default function Admin() {
   const [cantidad, setCantidad] = useState('1');
   const [carrito, setCarrito] = useState([]);
   const [formaPago, setFormaPago] = useState({ efectivo: '', transferencia: '', pos: '' });
-  const [cliente, setCliente] = useState('');
-  const [observaciones, setObservaciones] = useState('');
+  const [metodoPago, setMetodoPago] = useState('');
+  const [empleadoVenta, setEmpleadoVenta] = useState('');
+  const [totalCarrito, setTotalCarrito] = useState(0);
   const [loadingProductos, setLoadingProductos] = useState(false);
   const [errorProductos, setErrorProductos] = useState('');
   const [errorPago, setErrorPago] = useState('');
   const [loadingVenta, setLoadingVenta] = useState(false);
+  const [categoriaSeleccionadaVenta, setCategoriaSeleccionadaVenta] = useState('');
 
   // --- Estados para caja ---
   const [caja, setCaja] = useState(null);
@@ -80,6 +81,13 @@ export default function Admin() {
   const [ordenStock, setOrdenStock] = useState('none');
   const [mostrarSinStock, setMostrarSinStock] = useState(true);
   const [mostrarGestionStock, setMostrarGestionStock] = useState(false);
+  
+  // --- Estados para gestión de sabores ---
+  const [sabores, setSabores] = useState([]);
+  const [loadingSabores, setLoadingSabores] = useState(false);
+  const [errorSabores, setErrorSabores] = useState('');
+  const [editandoSabores, setEditandoSabores] = useState(false);
+  const [seccionStock, setSeccionStock] = useState('productos'); // 'productos' o 'sabores'
 
   // --- Estados para gestión de empleados ---
   const [empleados, setEmpleados] = useState([]);
@@ -90,11 +98,21 @@ export default function Admin() {
   const [editandoEmpleado, setEditandoEmpleado] = useState(null);
   const [empleadoEditando, setEmpleadoEditando] = useState('');
 
-  // --- Estados para presupuestos ---
-  const [generandoPresupuesto, setGenerandoPresupuesto] = useState(false);
-  const [mostrarModalWhatsApp, setMostrarModalWhatsApp] = useState(false);
-  const [numeroWhatsApp, setNumeroWhatsApp] = useState('');
-  const [presupuestoGenerado, setPresupuestoGenerado] = useState(null);
+  // --- Estados para gestión de usuarios ---
+  const [usuarios, setUsuarios] = useState([]);
+  const [loadingUsuarios, setLoadingUsuarios] = useState(false);
+  const [errorUsuarios, setErrorUsuarios] = useState('');
+  const [mostrarGestionUsuarios, setMostrarGestionUsuarios] = useState(false);
+  const [nuevoUsuario, setNuevoUsuario] = useState({ nombre: '', usuario: '', password: '', rol: 'Empleado' });
+  const [editandoUsuario, setEditandoUsuario] = useState(null);
+  const [usuarioEditando, setUsuarioEditando] = useState({ nombre: '', usuario: '', password: '', rol: 'Empleado' });
+
+  // --- Estados para control de roles ---
+  const [userRol, setUserRol] = useState('Empleado');
+  
+
+
+
   
   // --- Estados para edición masiva de precios ---
   const [mostrarEdicionMasiva, setMostrarEdicionMasiva] = useState(false);
@@ -137,6 +155,17 @@ export default function Admin() {
   useEffect(() => {
     if (localStorage.getItem('adminLogueado') === '1') {
       setLogueado(true);
+      // Establecer el rol del usuario desde el token si ya está logueado
+      const token = localStorage.getItem('adminToken');
+      if (token) {
+        try {
+          const payload = JSON.parse(atob(token.split('.')[1]));
+          setUserRol(payload.rol || 'Empleado');
+        } catch (error) {
+          console.error('Error al decodificar token inicial:', error);
+          setUserRol('Empleado');
+        }
+      }
     }
   }, []);
 
@@ -161,6 +190,7 @@ export default function Admin() {
         localStorage.setItem('adminLogueado', '1');
         localStorage.setItem('adminUsuario', data.usuario);
         localStorage.setItem('adminToken', data.token); // Guardar el token
+        setUserRol(data.rol || 'Empleado'); // Establecer el rol del usuario
       } else {
         setError(data.message || 'Usuario o contraseña incorrectos');
       }
@@ -257,7 +287,28 @@ export default function Admin() {
   // --- Cargar productos al iniciar sesión ---
   useEffect(() => {
     if (!logueado) return;
-    cargarProductos();
+    cargarProductos(); // Cargar productos con imágenes para la nueva venta
+
+    cargarEmpleados();
+    cargarUsuarios();
+    
+    // Establecer el rol del usuario desde el token
+    const token = localStorage.getItem('adminToken');
+    if (token) {
+      try {
+        const payload = JSON.parse(atob(token.split('.')[1]));
+        setUserRol(payload.rol || 'Empleado');
+      } catch (error) {
+        console.error('Error al decodificar token:', error);
+        setUserRol('Empleado');
+      }
+    }
+    
+    // Pre-llenar el campo empleado con el nombre del usuario logueado
+    const adminUsuario = localStorage.getItem('adminUsuario');
+    if (adminUsuario) {
+      setEmpleadoCaja(adminUsuario);
+    }
   }, [logueado]);
 
   // --- Manejar clic fuera del dropdown de búsqueda ---
@@ -290,6 +341,37 @@ export default function Admin() {
     return null;
   };
   const formatearPrecio = (precio) => new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 }).format(precio);
+  
+  // Función para procesar URLs de imágenes
+  const getImagenUrl = (url) => {
+    if (!url) return '';
+    
+    // Google Drive
+    const driveMatch = url.match(/https?:\/\/drive\.google\.com\/file\/d\/([\w-]+)\//);
+    if (driveMatch) {
+      const processedUrl = `https://drive.google.com/uc?export=view&id=${driveMatch[1]}`;
+      return processedUrl;
+    }
+    
+    // Google Photos direct (googleusercontent.com)
+    if (url.includes('googleusercontent.com')) {
+      return url;
+    }
+    
+    // Google Photos share link (photos.app.goo.gl)
+    if (url.includes('photos.app.goo.gl')) {
+      return null;
+    }
+    
+    // Dropbox preview URLs - usar URL original (funciona mejor en mobile)
+    if (url.includes('previews.dropbox.com')) {
+      return url;
+    }
+    
+    // Para cualquier otra URL, devolverla tal como está
+    return url;
+  };
+  
   const cantidadNum = Number(cantidad);
   const totalVenta = carrito.reduce((acc, p) => acc + (p.oferta && calcularPrecioOferta(p.precio, p.oferta) !== null ? calcularPrecioOferta(p.precio, p.oferta) : p.precio) * p.cantidad, 0);
   const totalPago = Number(formaPago.efectivo) + Number(formaPago.transferencia) + Number(formaPago.pos);
@@ -300,6 +382,7 @@ export default function Admin() {
     setTimeout(() => setNotificacion(null), 4000);
   };
 
+  // Restaurar la función mostrarConfirmacion con modal personalizado
   const mostrarConfirmacion = (titulo, mensaje, onConfirm) => {
     setModalConfirmacion({ titulo, mensaje, onConfirm });
   };
@@ -354,31 +437,45 @@ export default function Admin() {
     setCarrito(carrito.filter(p => p.id !== id));
   };
 
+  // --- Funciones para ajustar cantidad ---
+  const incrementarCantidad = () => {
+    const cantidadActual = Number(cantidad) || 1;
+    const stockDisponible = productoSeleccionado?.stock !== undefined && productoSeleccionado?.stock !== '' && !isNaN(Number(productoSeleccionado?.stock)) ? Number(productoSeleccionado.stock) : 999;
+    const nuevaCantidad = Math.min(cantidadActual + 1, stockDisponible, 999);
+    setCantidad(String(nuevaCantidad));
+  };
+
+  const decrementarCantidad = () => {
+    const cantidadActual = Number(cantidad) || 1;
+    const nuevaCantidad = Math.max(cantidadActual - 1, 1);
+    setCantidad(String(nuevaCantidad));
+  };
+
   const handleGenerarVenta = async () => {
     if (carrito.length === 0) {
       mostrarNotificacion('El carrito está vacío', 'error');
       return;
     }
 
-    if (!metodoPago) {
+    // Detectar automáticamente el método de pago basado en los montos ingresados
+    const efectivoValor = Number(formaPago.efectivo) || 0;
+    const transferenciaValor = Number(formaPago.transferencia) || 0;
+    const posValor = Number(formaPago.pos) || 0;
+    
+    if (efectivoValor === 0 && transferenciaValor === 0 && posValor === 0) {
       mostrarNotificacion('Selecciona un método de pago', 'error');
       return;
     }
 
-    setGenerandoVenta(true);
+    setLoadingVenta(true);
     try {
       const ventaData = {
-        productos: carrito.map(item => ({
-          id: item.id,
-          nombre: item.nombre,
-          cantidad: item.cantidad,
-          precio: item.precio,
-          subtotal: item.subtotal
-        })),
-        total: totalCarrito,
-        metodoPago,
-        empleado: empleadoVenta || 'Sin empleado',
-        fecha: new Date().toISOString()
+        productos: carrito.map(item => item.nombre),
+        cantidades: carrito.map(item => item.cantidad),
+        total: totalVenta,
+        efectivo: formaPago.efectivo || '0',
+        transferencia: formaPago.transferencia || '0',
+        pos: formaPago.pos || '0'
       };
 
       const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3001') + '/api';
@@ -395,13 +492,13 @@ export default function Admin() {
 
       const result = await res.json();
 
-      mostrarNotificacion(`✅ Venta registrada exitosamente - Total: $${formatearPrecio(totalCarrito)}`, 'success');
+      mostrarNotificacion(`✅ Venta registrada exitosamente - Total: ${formatearPrecio(totalVenta)}`, 'success');
       
-      // Limpiar carrito
+      // Limpiar carrito y métodos de pago
       setCarrito([]);
-      setTotalCarrito(0);
       setMetodoPago('');
       setEmpleadoVenta('');
+      setFormaPago({ efectivo: '', transferencia: '', pos: '' });
       
       // Recargar productos para actualizar stock
       await cargarProductos();
@@ -413,12 +510,16 @@ export default function Admin() {
       console.error('Error al generar venta:', err);
       mostrarNotificacion(`❌ Error: ${err.message}`, 'error');
     } finally {
-      setGenerandoVenta(false);
+      setLoadingVenta(false);
     }
   };
 
   // Handlers para autocompletar el total en un método de pago
   const handlePagoClick = (metodo) => {
+    // Establecer el método de pago inmediatamente para evitar interferencia del useEffect
+    setMetodoPago(metodo);
+    
+    // Establecer los valores de forma de pago
     setFormaPago({
       efectivo: metodo === 'efectivo' ? String(totalVenta) : '',
       transferencia: metodo === 'transferencia' ? String(totalVenta) : '',
@@ -463,6 +564,33 @@ export default function Admin() {
     cargarCaja();
   }, [logueado]);
 
+  // Detectar automáticamente el método de pago cuando se ingresan montos manualmente
+  useEffect(() => {
+    const efectivoValor = Number(formaPago.efectivo) || 0;
+    const transferenciaValor = Number(formaPago.transferencia) || 0;
+    const posValor = Number(formaPago.pos) || 0;
+    
+    // Solo detectar automáticamente si no hay un método de pago ya seleccionado
+    // o si hay múltiples métodos con montos (pago mixto)
+    const totalMetodos = [efectivoValor, transferenciaValor, posValor].filter(val => val > 0).length;
+    
+    if (totalMetodos === 0) {
+      setMetodoPago('');
+    } else if (totalMetodos === 1) {
+      // Si solo hay un método con monto, detectarlo automáticamente
+      if (efectivoValor > 0 && transferenciaValor === 0 && posValor === 0) {
+        setMetodoPago('efectivo');
+      } else if (transferenciaValor > 0 && efectivoValor === 0 && posValor === 0) {
+        setMetodoPago('transferencia');
+      } else if (posValor > 0 && efectivoValor === 0 && transferenciaValor === 0) {
+        setMetodoPago('pos');
+      }
+    } else if (totalMetodos > 1) {
+      // Si hay múltiples métodos con montos, es pago mixto
+      setMetodoPago('mixto');
+    }
+  }, [formaPago.efectivo, formaPago.transferencia, formaPago.pos]);
+
   // --- Abrir caja ---
   const handleAbrirCaja = async () => {
     if (!empleadoCaja) { setErrorCaja('Ingrese el nombre del empleado'); return; }
@@ -480,9 +608,11 @@ export default function Admin() {
         const errorData = await res.json().catch(() => ({}));
         throw new Error(errorData.error || 'Error al abrir caja');
       }
-              setMensajeCaja('🔓 Caja abierta');
+      setMensajeCaja('🔓 Caja abierta');
       setEmpleadoCaja('');
-      setCaja({ abierta: true, turno, empleado: empleadoCaja });
+      setMontoApertura(montoApertura);
+      setMontoCierre(montoApertura); // El monto de cierre por defecto será igual al de apertura
+      await cargarCaja();
     } catch (err) {
       setErrorCaja(err.message || 'No se pudo abrir la caja');
     } finally {
@@ -602,6 +732,162 @@ export default function Admin() {
     setEmpleadoEditando('');
   };
 
+  // --- Funciones para gestión de usuarios ---
+  const cargarUsuarios = async () => {
+    setLoadingUsuarios(true);
+    setErrorUsuarios('');
+    try {
+      const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3001') + '/api';
+      
+      const res = await fetchWithAuth(`${API_URL}/usuarios?t=${Date.now()}`, {
+        cache: 'no-cache'
+      });
+      
+      const data = await res.json();
+      setUsuarios(data);
+      
+    } catch (err) {
+      console.error('Error completo al cargar usuarios:', err);
+      setErrorUsuarios(`No se pudieron cargar los usuarios: ${err.message}`);
+    } finally {
+      setLoadingUsuarios(false);
+    }
+  };
+
+  const verificarToken = async () => {
+    try {
+      const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3001') + '/api';
+      const res = await fetchWithAuth(`${API_URL}/auth/debug`);
+      const data = await res.json();
+      return data;
+    } catch (err) {
+      console.error('Error al verificar token:', err);
+      return null;
+    }
+  };
+
+  const agregarUsuario = async () => {
+    if (!nuevoUsuario.nombre || !nuevoUsuario.usuario || !nuevoUsuario.password) {
+      mostrarNotificacion('Por favor completa todos los campos', 'error');
+      return;
+    }
+
+    // Verificar token antes de continuar
+    const tokenInfo = await verificarToken();
+    
+    setLoadingUsuarios(true);
+    try {
+      const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3001') + '/api';
+      
+      const res = await fetchWithAuth(`${API_URL}/usuarios`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(nuevoUsuario)
+      });
+      
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({ error: 'Error desconocido' }));
+        throw new Error(errorData.error || `Error ${res.status}`);
+      }
+      
+      const data = await res.json();
+      mostrarNotificacion(`✅ Usuario "${nuevoUsuario.nombre}" agregado correctamente`, 'success');
+      
+      setNuevoUsuario({ nombre: '', usuario: '', password: '', rol: 'Empleado' });
+      await cargarUsuarios();
+      
+    } catch (err) {
+      console.error('Error al agregar usuario:', err);
+      mostrarNotificacion(`❌ Error: ${err.message}`, 'error');
+    } finally {
+      setLoadingUsuarios(false);
+    }
+  };
+
+  const editarUsuario = async () => {
+    if (!editandoUsuario || !usuarioEditando.nombre || !usuarioEditando.usuario) {
+      mostrarNotificacion('Por favor completa los campos requeridos', 'error');
+      return;
+    }
+
+    setLoadingUsuarios(true);
+    try {
+      const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3001') + '/api';
+      
+      const res = await fetchWithAuth(`${API_URL}/usuarios/${editandoUsuario.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(usuarioEditando)
+      });
+      
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({ error: 'Error desconocido' }));
+        throw new Error(errorData.error || `Error ${res.status}`);
+      }
+      
+      mostrarNotificacion(`✅ Usuario "${usuarioEditando.nombre}" actualizado correctamente`, 'success');
+      
+      setEditandoUsuario(null);
+      setUsuarioEditando({ nombre: '', usuario: '', password: '', rol: 'Empleado' });
+      await cargarUsuarios();
+      
+    } catch (err) {
+      console.error('Error al editar usuario:', err);
+      mostrarNotificacion(`❌ Error: ${err.message}`, 'error');
+    } finally {
+      setLoadingUsuarios(false);
+    }
+  };
+
+  // Modificar eliminarUsuario para que elimine directamente tras mostrar el modal
+  const eliminarUsuario = async (usuarioUsername) => {
+    const usuarioObj = usuarios.find(u => u.usuario === usuarioUsername);
+    if (!usuarioObj) {
+      return;
+    }
+
+    // Mostrar el modal y eliminar directamente
+    mostrarConfirmacion(
+      'Eliminar Usuario',
+      `¿Estás seguro de que quieres eliminar al usuario "${usuarioObj.nombre}"? Esta acción no se puede deshacer.`,
+      async () => {
+        setLoadingUsuarios(true);
+        try {
+          const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3001') + '/api';
+          const res = await fetchWithAuth(`${API_URL}/usuarios/usuario/${encodeURIComponent(usuarioObj.usuario)}`, {
+            method: 'DELETE'
+          });
+          if (!res.ok) {
+            const errorData = await res.json().catch(() => ({ error: 'Error desconocido' }));
+            throw new Error(errorData.error || `Error ${res.status}`);
+          }
+          mostrarNotificacion(`✅ Usuario "${usuarioObj.nombre}" eliminado correctamente`, 'success');
+          await cargarUsuarios();
+        } catch (err) {
+          console.error('Error al eliminar usuario (frontend):', err);
+          mostrarNotificacion(`❌ Error: ${err.message}`, 'error');
+        } finally {
+          setLoadingUsuarios(false);
+        }
+      }
+    );
+  };
+
+  const iniciarEdicionUsuario = (usuario) => {
+    setEditandoUsuario(usuario);
+    setUsuarioEditando({
+      nombre: usuario.nombre,
+      usuario: usuario.usuario,
+      password: '', // No mostrar la contraseña hasheada
+      rol: usuario.rol
+    });
+  };
+
+  const cancelarEdicionUsuario = () => {
+    setEditandoUsuario(null);
+    setUsuarioEditando({ nombre: '', usuario: '', password: '', rol: 'Empleado' });
+  };
+
   useEffect(() => {
     if (logueado) {
       cargarEmpleados();
@@ -615,149 +901,7 @@ export default function Admin() {
   }, [mostrarGestionEmpleados]);
 
   // --- Funciones para generación de presupuestos ---
-  const generarPresupuesto = async () => {
-    if (carrito.length === 0) {
-      mostrarNotificacion('No hay productos en el carrito para generar presupuesto', 'error');
-      return;
-    }
 
-    setGenerandoPresupuesto(true);
-    try {
-      const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3001') + '/api';
-      const res = await fetch(`${API_URL}/presupuesto/generar`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          productos: carrito,
-          cliente: cliente || '',
-          observaciones: observaciones || '',
-          empleado: empleadoCaja || '',
-        })
-      });
-
-      if (!res.ok) {
-        const errorData = await res.json();
-        throw new Error(errorData.error || 'Error al generar presupuesto');
-      }
-
-      // Crear blob del PDF y descargarlo
-      const blob = await res.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `presupuesto_${Date.now()}.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
-
-      mostrarNotificacion('✅ Presupuesto generado y descargado correctamente', 'success');
-    } catch (err) {
-      console.error('Error al generar presupuesto:', err);
-      mostrarNotificacion(`❌ Error: ${err.message}`, 'error');
-    } finally {
-      setGenerandoPresupuesto(false);
-    }
-  };
-
-  const enviarWhatsApp = () => {
-    if (!numeroWhatsApp.trim()) {
-      mostrarNotificacion('Por favor ingresa un número de WhatsApp', 'error');
-      return;
-    }
-
-    // Limpiar número (solo números)
-    const numeroLimpio = numeroWhatsApp.replace(/\D/g, '');
-    
-    // Agregar código de país si no tiene (asumiendo Argentina +54)
-    const numeroCompleto = numeroLimpio.startsWith('54') ? numeroLimpio : `54${numeroLimpio}`;
-    
-    // Crear mensaje con emojis más compatibles
-    const mensaje = 
-    `Hola! 👋 Te envío el presupuesto solicitado.\n\n` +
-    `*📄 PRESUPUESTO ALNORTEGROW*\n` +
-    `💰 Total: $${presupuestoGenerado.total.toLocaleString('es-AR')}\n\n` +
-    `📎 Adjunto el PDF con todos los detalles.\n\n` +
-    `🙏 ¡Gracias por tu interés!`;
-
-    const mensajeCodificado = encodeURIComponent(mensaje)
-  
-
-// Construimos la URL final
-const urlWhatsApp = `https://api.whatsapp.com/send?phone=${numeroCompleto}&text=${mensajeCodificado}`;
-window.open(urlWhatsApp, '_blank');
-    
-    // Cerrar modal
-    setMostrarModalWhatsApp(false);
-    setNumeroWhatsApp('');
-    setPresupuestoGenerado(null);
-    
-    mostrarNotificacion('✅ WhatsApp abierto correctamente', 'success');
-  };
-
-  const generarPresupuestoYWhatsApp = async () => {
-    if (carrito.length === 0) {
-      mostrarNotificacion('No hay productos en el carrito para generar presupuesto', 'error');
-      return;
-    }
-
-    setGenerandoPresupuesto(true);
-    try {
-      const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3001') + '/api';
-      const res = await fetch(`${API_URL}/presupuesto/generar`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          productos: carrito,
-          cliente: cliente || '',
-          observaciones: observaciones || '',
-          empleado: empleadoCaja || ''
-        })
-      });
-
-      if (!res.ok) {
-        const errorData = await res.json();
-        throw new Error(errorData.error || 'Error al generar presupuesto');
-      }
-
-      // Crear blob del PDF y descargarlo
-      const blob = await res.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `presupuesto_${Date.now()}.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
-
-      // Guardar información del presupuesto generado
-      const totalPresupuesto = carrito.reduce((acc, p) => {
-        const precioFinal = p.oferta && calcularPrecioOferta(p.precio, p.oferta) !== null 
-          ? calcularPrecioOferta(p.precio, p.oferta) 
-          : p.precio;
-        return acc + precioFinal * p.cantidad;
-      }, 0);
-
-      setPresupuestoGenerado({
-        productos: carrito,
-        total: totalPresupuesto,
-        cliente: cliente || '',
-        empleado: empleadoCaja || ''
-      });
-
-      // Mostrar modal de WhatsApp
-      setMostrarModalWhatsApp(true);
-      setNumeroWhatsApp('');
-
-      mostrarNotificacion('✅ Presupuesto generado y descargado correctamente', 'success');
-    } catch (err) {
-      console.error('Error al generar presupuesto:', err);
-      mostrarNotificacion(`❌ Error: ${err.message}`, 'error');
-    } finally {
-      setGenerandoPresupuesto(false);
-    }
-  };
 
   // --- Funciones para gestión de ventas ---
   const cargarVentas = async () => {
@@ -834,15 +978,24 @@ window.open(urlWhatsApp, '_blank');
     ventasFiltradas.sort((a, b) => {
       switch (ordenVentas) {
         case 'fecha_asc':
-          return new Date(a.fecha) - new Date(b.fecha);
+          // Ordenar por fecha y hora (más antigua primero)
+          const fechaHoraA = `${normalizarFecha(a.fecha)} ${a.hora || '00:00:00'}`;
+          const fechaHoraB = `${normalizarFecha(b.fecha)} ${b.hora || '00:00:00'}`;
+          return fechaHoraA.localeCompare(fechaHoraB);
         case 'fecha_desc':
-          return new Date(b.fecha) - new Date(a.fecha);
+          // Ordenar por fecha y hora (más reciente primero)
+          const fechaHoraADesc = `${normalizarFecha(a.fecha)} ${a.hora || '00:00:00'}`;
+          const fechaHoraBDesc = `${normalizarFecha(b.fecha)} ${b.hora || '00:00:00'}`;
+          return fechaHoraBDesc.localeCompare(fechaHoraADesc);
         case 'monto_asc':
           return a.total - b.total;
         case 'monto_desc':
           return b.total - a.total;
         default:
-          return new Date(b.fecha) - new Date(a.fecha);
+          // Por defecto, más reciente primero
+          const fechaHoraADefault = `${normalizarFecha(a.fecha)} ${a.hora || '00:00:00'}`;
+          const fechaHoraBDefault = `${normalizarFecha(b.fecha)} ${b.hora || '00:00:00'}`;
+          return fechaHoraBDefault.localeCompare(fechaHoraADefault);
       }
     });
     
@@ -967,15 +1120,24 @@ window.open(urlWhatsApp, '_blank');
       
       switch (ordenCajas) {
         case 'fecha_asc':
-          return new Date(a.fechaApertura) - new Date(b.fechaApertura);
+          // Ordenar por fecha y hora (más antigua primero)
+          const fechaHoraA = `${normalizarFecha(a.fechaApertura)} ${a.horaApertura || '00:00:00'}`;
+          const fechaHoraB = `${normalizarFecha(b.fechaApertura)} ${b.horaApertura || '00:00:00'}`;
+          return fechaHoraA.localeCompare(fechaHoraB);
         case 'fecha_desc':
-          return new Date(b.fechaApertura) - new Date(a.fechaApertura);
+          // Ordenar por fecha y hora (más reciente primero)
+          const fechaHoraADesc = `${normalizarFecha(a.fechaApertura)} ${a.horaApertura || '00:00:00'}`;
+          const fechaHoraBDesc = `${normalizarFecha(b.fechaApertura)} ${b.horaApertura || '00:00:00'}`;
+          return fechaHoraBDesc.localeCompare(fechaHoraADesc);
         case 'monto_asc':
           return totalA - totalB;
         case 'monto_desc':
           return totalB - totalA;
         default:
-          return new Date(b.fechaApertura) - new Date(a.fechaApertura);
+          // Por defecto, más reciente primero
+          const fechaHoraADefault = `${normalizarFecha(a.fechaApertura)} ${a.horaApertura || '00:00:00'}`;
+          const fechaHoraBDefault = `${normalizarFecha(b.fechaApertura)} ${b.horaApertura || '00:00:00'}`;
+          return fechaHoraBDefault.localeCompare(fechaHoraADefault);
       }
     });
     
@@ -1001,7 +1163,7 @@ window.open(urlWhatsApp, '_blank');
           }
           
           const result = await res.json();
-          mostrarNotificacion(`✅ Caja eliminada correctamente. Total: $${result.cajaEliminada.total}`, 'success');
+          mostrarNotificacion(`✅ Caja eliminada correctamente.`, 'success');
           
           // Recargar cajas
           if (mostrarGestionCajas) {
@@ -1040,6 +1202,7 @@ window.open(urlWhatsApp, '_blank');
       const res = await fetch(`${API_URL}/reportes/metricas?${params.toString()}`);
       if (!res.ok) throw new Error('Error al cargar métricas');
       const data = await res.json();
+      
       setMetricas(data);
     } catch (err) {
       setErrorMetricas('No se pudieron cargar las métricas');
@@ -1279,6 +1442,64 @@ window.open(urlWhatsApp, '_blank');
     }
   };
 
+  // --- Funciones para gestión de sabores ---
+  const cargarSabores = async () => {
+    setLoadingSabores(true);
+    setErrorSabores('');
+    try {
+      const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3001') + '/api';
+      
+      const res = await fetchWithDelay(`${API_URL}/sabores?t=${Date.now()}`, {
+        cache: 'no-cache'
+      });
+      
+      const data = await res.json();
+      setSabores(data);
+      
+    } catch (err) {
+      console.error('Error completo al cargar sabores:', err);
+      setErrorSabores(`No se pudieron cargar los sabores: ${err.message}`);
+    } finally {
+      setLoadingSabores(false);
+    }
+  };
+
+  const actualizarSabores = async () => {
+    setEditandoSabores(true);
+    try {
+      const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3001') + '/api';
+      
+      const res = await fetchWithAuth(`${API_URL}/sabores`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sabores })
+      });
+      
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({ error: 'Error desconocido' }));
+        throw new Error(errorData.error || `Error ${res.status}`);
+      }
+      
+      mostrarNotificacion('✅ Sabores actualizados correctamente', 'success');
+      
+    } catch (err) {
+      console.error('Error al actualizar sabores:', err);
+      mostrarNotificacion(`❌ Error: ${err.message}`, 'error');
+    } finally {
+      setEditandoSabores(false);
+    }
+  };
+
+  const toggleCajaSabor = (saborId, cajaIndex) => {
+    setSabores(prevSabores => 
+      prevSabores.map(sabor => 
+        sabor.id === saborId 
+          ? { ...sabor, cajas: cajaIndex }
+          : sabor
+      )
+    );
+  };
+
   // --- Funciones para filtrar y ordenar productos de stock ---
   const obtenerProductosFiltrados = () => {
     let productosFiltrados = [...productosStock];
@@ -1299,12 +1520,10 @@ window.open(urlWhatsApp, '_blank');
       );
     }
     
-    // Filtrar por stock (mostrar/ocultar productos sin stock)
-    if (!mostrarSinStock) {
-      productosFiltrados = productosFiltrados.filter(producto => 
-        producto.stock > 0
-      );
-    }
+    // Filtrar productos sin stock (no mostrar productos con stock 0 o undefined)
+    productosFiltrados = productosFiltrados.filter(producto => 
+      producto.stock !== undefined && producto.stock !== '' && !isNaN(Number(producto.stock)) && Number(producto.stock) > 0
+    );
     
     // Ordenar por stock
     if (ordenStock !== 'none') {
@@ -1466,7 +1685,6 @@ window.open(urlWhatsApp, '_blank');
         await new Promise(resolve => setTimeout(resolve, 500));
         
         // Forzar recarga completa de stock
-        await cargarStock();
         await cargarProductosBajoStock();
         
         // Forzar re-render del componente con un delay adicional
@@ -1486,11 +1704,6 @@ window.open(urlWhatsApp, '_blank');
     }
   };
 
-  useEffect(() => {
-    if (mostrarGestionStock) {
-      cargarStock();
-    }
-  }, [mostrarGestionStock]);
 
   // Cargar reportes cuando se muestra la vista
   useEffect(() => {
@@ -1515,22 +1728,37 @@ window.open(urlWhatsApp, '_blank');
     }
   }, [productoSeleccionadoStock]);
 
+  // --- Estado para minimizar panel de caja en mobile ---
+  const [panelCajaAbierto, setPanelCajaAbierto] = useState(true);
+  const [isMobile, setIsMobile] = useState(window.innerWidth <= 900);
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth <= 900);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  useEffect(() => {
+    cargarStock();
+  }, []);
+
+
   // --- Render ---
   if (!logueado) {
     return (
-      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f8fafc' }}>
-        <form onSubmit={handleLogin} style={{ background: 'white', padding: '2.5rem 2rem', borderRadius: '16px', boxShadow: '0 4px 16px rgba(0,0,0,0.08)', minWidth: 320 }}>
-          <h2 style={{ marginBottom: '1.5rem', textAlign: 'center', color: '#1e293b' }}>ALNORTEGROW</h2>
-          <div style={{ marginBottom: '1rem' }}>
-            <label style={{ display: 'block', marginBottom: 6, color: '#64748b', fontWeight: 600 }}>Usuario</label>
-            <input type="text" value={usuario} onChange={e => setUsuario(e.target.value)} autoFocus required style={{ width: '100%', padding: '0.7rem', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: '1rem' }} />
+      <div className="admin-login-bg">
+        <form onSubmit={handleLogin} className="admin-login-form">
+          <h2 className="admin-login-title">ALNORTEGROW</h2>
+          <div className="admin-login-field">
+            <label className="admin-login-label">Usuario</label>
+            <input type="text" value={usuario} onChange={e => setUsuario(e.target.value)} autoFocus required className="admin-login-input" />
           </div>
-          <div style={{ marginBottom: '1.5rem' }}>
-            <label style={{ display: 'block', marginBottom: 6, color: '#64748b', fontWeight: 600 }}>Contraseña</label>
-            <input type="password" value={password} onChange={e => setPassword(e.target.value)} required style={{ width: '100%', padding: '0.7rem', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: '1rem' }} />
+          <div className="admin-login-field admin-login-field-password">
+            <label className="admin-login-label">Contraseña</label>
+            <input type="password" value={password} onChange={e => setPassword(e.target.value)} required className="admin-login-input" />
           </div>
-          {error && <div style={{ color: '#dc2626', marginBottom: 12, textAlign: 'center', fontWeight: 600 }}>{error}</div>}
-          <button type="submit" disabled={loadingLogin} style={{ width: '100%', background: 'linear-gradient(135deg, #fbbf24, #f59e0b)', color: '#1e293b', border: 'none', padding: '0.9rem', borderRadius: 10, fontSize: '1.1rem', fontWeight: 700, cursor: loadingLogin ? 'not-allowed' : 'pointer', boxShadow: '0 2px 8px rgba(251,191,36,0.10)', opacity: loadingLogin ? 0.7 : 1 }}>
+          {error && <div className="admin-login-error">{error}</div>}
+          <button type="submit" disabled={loadingLogin} className="admin-login-btn">
             {loadingLogin ? 'Verificando...' : 'Ingresar'}
           </button>
         </form>
@@ -1595,6 +1823,20 @@ window.open(urlWhatsApp, '_blank');
           <span style={{ fontWeight: 700, color: '#1e293b', fontSize: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
                                     <span role="img" aria-label="usuario">👤</span> {localStorage.getItem('adminUsuario') || usuario || 'Admin'}
           </span>
+          {userRol && (
+            <span style={{
+              marginLeft: 10,
+              padding: '2px 10px',
+              borderRadius: 8,
+              fontWeight: 700,
+              fontSize: 13,
+              background: userRol === 'Administrador' ? 'linear-gradient(135deg, #fbbf24, #f59e0b)' : '#e0e7ef',
+              color: userRol === 'Administrador' ? '#b45309' : '#334155',
+              border: userRol === 'Administrador' ? '1px solid #f59e0b' : '1px solid #cbd5e1',
+              display: 'inline-block',
+              verticalAlign: 'middle',
+            }}>{userRol}</span>
+          )}
           <button onClick={handleLogout} style={{ background: 'none', border: 'none', color: '#ef4444', fontWeight: 700, fontSize: 16, cursor: 'pointer', padding: '0.3rem 1rem', borderRadius: 8, transition: 'background 0.2s' }} onMouseOver={e => e.currentTarget.style.background='#fee2e2'} onMouseOut={e => e.currentTarget.style.background='none'}>
             Salir
           </button>
@@ -1610,181 +1852,230 @@ window.open(urlWhatsApp, '_blank');
         position: 'relative',
         flexWrap: 'wrap',
       }}>
-        {/* Panel de caja flotante a la izquierda */}
-        <div style={{
-          minWidth: 320,
-          maxWidth: 340,
-          background: 'white',
-          borderRadius: 16,
-          boxShadow: '0 4px 16px rgba(0,0,0,0.08)',
-          padding: '2rem 1.5rem',
-          position: 'sticky',
-          top: 32,
-          flex: '0 0 340px',
-          zIndex: 2,
-          marginBottom: 32,
-        }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-            <h2 style={{ color: '#1e293b', fontWeight: 800, marginBottom: 0 }}>Panel de Caja</h2>
+        <div className="admin-caja-panel">
+          <div className="admin-caja-header" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', marginBottom: 8 }}>
+            <h2 style={{ color: '#1e293b', fontWeight: 800, marginBottom: 0, fontSize: 22 }}>Panel de Caja</h2>
+
+            {isMobile && (
+              <button
+              onClick={() => setPanelCajaAbierto(v => !v)}
+              style={{
+                background: '#f1f5f9',
+                color: '#64748b',
+                border: 'none',
+                padding: '0.5rem',
+                borderRadius: 6,
+                cursor: 'pointer',
+                fontSize: '1.2rem',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: '32px',
+                height: '32px',
+                marginLeft: '10px'
+              }}
+              title={mostrarFiltrosCajas ? 'Ocultar filtros' : 'Mostrar filtros'}
+              aria-label={panelCajaAbierto ? 'Minimizar caja' : 'Expandir caja'}
+            >
+              {panelCajaAbierto ? '−' : '+'}
+            </button>
+            )}
           </div>
-          {/* Resumen de caja */}
-          <div style={{ background: '#f8fafc', borderRadius: 12, padding: '1rem 1.2rem', marginBottom: 18, border: '1px solid #e2e8f0' }}>
-            <div style={{ fontWeight: 700, color: '#64748b', marginBottom: 4 }}>Monto inicial caja:</div>
-            <div style={{ fontWeight: 800, color: '#1e293b', fontSize: 18, marginBottom: 10 }}>$ {caja && caja.montoApertura ? caja.montoApertura : '30000'}</div>
-            <div style={{ fontWeight: 700, color: '#64748b', marginBottom: 4 }}>Total Efectivo ganado:</div>
-            <div style={{ fontWeight: 800, color: '#059669', fontSize: 18, marginBottom: 8 }}>$ {caja && caja.totales ? caja.totales.efectivo : 0}</div>
-            <div style={{ fontWeight: 700, color: '#64748b', marginBottom: 4 }}>Total Transferencia ganado:</div>
-            <div style={{ fontWeight: 800, color: '#0ea5e9', fontSize: 18, marginBottom: 8 }}>$ {caja && caja.totales ? caja.totales.transferencia : 0}</div>
-            <div style={{ fontWeight: 700, color: '#64748b', marginBottom: 4 }}>Total POS ganado:</div>
-            <div style={{ fontWeight: 800, color: '#f59e0b', fontSize: 18, marginBottom: 8 }}>$ {caja && caja.totales ? caja.totales.pos : 0}</div>
-            <div style={{ fontWeight: 700, color: '#64748b', marginBottom: 4 }}>Total vendido:</div>
-            <div style={{ fontWeight: 800, color: '#1e293b', fontSize: 18 }}>$ {caja && caja.totalVendido ? caja.totalVendido : 0}</div>
-          </div>
-          {/* Estado de caja y controles */}
-          {loadingCaja ? <div style={{ color: '#64748b', marginBottom: 16 }}>Cargando estado de caja...</div> : (
-            caja && caja.abierta ? (
-              <div>
-                <div style={{ color: '#059669', fontWeight: 700, marginBottom: 8 }}>🔓 Caja abierta ({caja.turno}, {caja.empleado})</div>
-                <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 8 }}>
-                  <span style={{ fontWeight: 700, fontSize: '1rem' }}>Monto cierre:</span>
-                  <input type="text" value={montoCierre} onChange={e => { if (/^\d*$/.test(e.target.value)) setMontoCierre(e.target.value); }} style={{ padding: '0.7rem', borderRadius: 8, border: '1px solid #cbd5e1', fontWeight: 700, fontSize: '1rem', width: 76 }} />
-                  <button onClick={handleCerrarCaja} style={{ background: 'linear-gradient(135deg, #ef4444, #f87171)', color: '#fff', border: 'none', padding: '0.7rem 1.2rem', borderRadius: 10, fontWeight: 700, fontSize: '1rem', cursor: 'pointer', marginBottom: 0 }}>Cerrar</button>
-                </div>
+          {(!isMobile || panelCajaAbierto) && (
+            <>
+              {/* Resumen de caja */}
+              <div className="admin-caja-resumen">
+                <div style={{ fontWeight: 700, color: '#64748b', marginBottom: 4 }}>Monto inicial caja:</div>
+                <div style={{ fontWeight: 800, color: '#1e293b', fontSize: 18, marginBottom: 10 }}>$ {caja && caja.montoApertura ? caja.montoApertura : '0'}</div>
+                <div style={{ fontWeight: 700, color: '#64748b', marginBottom: 4 }}>Total Efectivo ganado:</div>
+                <div style={{ fontWeight: 800, color: '#059669', fontSize: 18, marginBottom: 8 }}>$ {caja && caja.totales ? caja.totales.efectivo : 0}</div>
+                <div style={{ fontWeight: 700, color: '#64748b', marginBottom: 4 }}>Total Transferencia ganado:</div>
+                <div style={{ fontWeight: 800, color: '#0ea5e9', fontSize: 18, marginBottom: 8 }}>$ {caja && caja.totales ? caja.totales.transferencia : 0}</div>
+                <div style={{ fontWeight: 700, color: '#64748b', marginBottom: 4 }}>Total POS ganado:</div>
+                <div style={{ fontWeight: 800, color: '#f59e0b', fontSize: 18, marginBottom: 8 }}>$ {caja && caja.totales ? caja.totales.pos : 0}</div>
+                <div style={{ fontWeight: 700, color: '#64748b', marginBottom: 4 }}>Total vendido:</div>
+                <div style={{ fontWeight: 800, color: '#1e293b', fontSize: 18 }}>$ {caja && caja.totalVendido ? caja.totalVendido : 0}</div>
               </div>
-            ) : (
-              <div style={{ marginBottom: 24 }}>
-                <div style={{ color: '#64748b', fontWeight: 600, marginBottom: 8 }}>🔒 Caja cerrada</div>
-                <div style={{ display: 'flex', gap: 16, alignItems: 'center', marginBottom: 8, flexWrap: 'wrap', justifyContent: 'center' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 220 }}>
-                    <span style={{ fontWeight: 700, fontSize: '1rem', width: 120, textAlign: 'left' }}>🕣 Turno</span>
-                    <select value={turno} onChange={e => setTurno(e.target.value)} style={{ padding: '0.7rem 1rem', borderRadius: 8, border: '1px solid #cbd5e1', fontWeight: 700, fontSize: '1rem', width: 145, height: '2.8rem', textAlign: 'center'}}>
-                      <option value="Mañana">Mañana</option>
-                      <option value="Tarde">Tarde</option>
-                    </select>
+              {/* Estado de caja y controles */}
+              {loadingCaja ? <div className="admin-caja-loading">Cargando estado de caja...</div> : (
+              <div className='admin-caja-abierta-cerrada'>
+                
+                {caja && caja.abierta ? (
+                  <div>
+                    <div className="admin-caja-abierta">🔓 Caja abierta ({caja.turno}, {caja.empleado})</div>
+                    <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 8 }}>
+                      <span style={{ fontWeight: 700, fontSize: '1rem' }}>Monto cierre:</span>
+                      <input type="text" value={montoCierre} onChange={e => { if (/^\d*$/.test(e.target.value)) setMontoCierre(e.target.value); }} style={{ padding: '0.7rem', borderRadius: 8, border: '1px solid #cbd5e1', fontWeight: 700, fontSize: '1rem', width: 76 }} />
+                      <button onClick={handleCerrarCaja} style={{ background: 'linear-gradient(135deg, #ef4444, #f87171)', color: '#fff', border: 'none', padding: '0.7rem 1.2rem', borderRadius: 10, fontWeight: 700, fontSize: '1rem', cursor: 'pointer', marginBottom: 0 }}>Cerrar</button>
+                    </div>
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 220 }}>
-                    <span style={{ fontWeight: 700, fontSize: '1rem', width: 120, textAlign: 'left' }}>👤 Empleado</span>
-                    <select value={empleadoCaja} onChange={e => setEmpleadoCaja(e.target.value)} style={{ padding: '0.7rem 1rem', borderRadius: 8, border: '1px solid #cbd5e1', fontWeight: 700, fontSize: '1rem', width: 145, height: '2.8rem', textAlign: 'center' }}>
-                      <option value="">Seleccionar</option>
-                      {empleados.map(emp => <option key={emp.id || emp} value={emp.nombre || emp}>{emp.nombre || emp}</option>)}
-                    </select>
+                ) : (
+                  <div style={{ marginBottom: 24, display: 'flex', flexDirection: 'column',alignContent:'center', justifyContent: 'center'}}>
+                    <div className="admin-caja-cerrada-label">🔒 Caja cerrada</div>
+                    <div style={{ display: 'flex', gap: 16, alignItems: 'center', marginBottom: 8, flexWrap: 'wrap', justifyContent: 'center' }}>
+                      <div className="admin-caja-apertura-control">
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 220 }}>
+                          <span style={{ fontWeight: 700, fontSize: '1rem', width: 120, textAlign: 'left' }}>🕣 Turno</span>
+                          <select value={turno} onChange={e => setTurno(e.target.value)} style={{ padding: '0.7rem 1rem', borderRadius: 8, border: '1px solid #cbd5e1', fontWeight: 700, fontSize: '1rem', width: 145, height: '2.8rem', textAlign: 'center'}}>
+                            <option value="mañana">Mañana</option>
+                            <option value="tarde">Tarde</option>
+                          </select>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 220 }}>
+                          <span style={{ fontWeight: 700, fontSize: '1rem', width: 120, textAlign: 'left' }}>👤 Empleado</span>
+                          <select value={empleadoCaja} onChange={e => setEmpleadoCaja(e.target.value)} style={{ padding: '0.7rem 1rem', borderRadius: 8, border: '1px solid #cbd5e1', fontWeight: 700, fontSize: '1rem', width: 145, height: '2.8rem', textAlign: 'center' }}>
+                            <option value="">Seleccionar</option>
+                            {empleados.map(emp => <option key={emp.id || emp} value={emp.nombre || emp}>{emp.nombre || emp}</option>)}
+                          </select>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 220 }}>
+                          <span style={{ fontWeight: 700, fontSize: '1rem', width: 120, textAlign: 'left' }}>💵 Monto inicial</span>
+                          <input type="text" value={montoApertura} onChange={e => { if (/^\d*$/.test(e.target.value)) setMontoApertura(e.target.value); }} style={{ padding: '0.7rem 1rem', borderRadius: 8, border: '1px solid #cbd5e1', fontWeight: 700, fontSize: '1rem', width: 145, height: '2.8rem', textAlign:'center' }} />
+                        </div>
+                        <button onClick={handleAbrirCaja} className="admin-caja-apertura-btn">🔓 Abrir caja</button>
+                      </div>
+                    </div>
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 220 }}>
-                    <span style={{ fontWeight: 700, fontSize: '1rem', width: 120, textAlign: 'left' }}>💵 Monto inicial</span>
-                    <input type="text" value={montoApertura} onChange={e => { if (/^\d*$/.test(e.target.value)) setMontoApertura(e.target.value); }} style={{ padding: '0.7rem 1rem', borderRadius: 8, border: '1px solid #cbd5e1', fontWeight: 700, fontSize: '1rem', width: 145, height: '2.8rem', textAlign:'center' }} />
-                  </div>
-                  <button onClick={handleAbrirCaja} style={{ background: 'linear-gradient(135deg, #059669, #10b981)', color: '#fff', border: 'none', padding: '0.7rem 1.2rem', borderRadius: 10, fontWeight: 700, fontSize: '1rem', cursor: 'pointer', height: '2.8rem' }}>🔓 Abrir caja</button>
-                </div>
-              </div>
-            )
+                )
+              }
+              </div>)}
+              {errorCaja && <div className="admin-caja-error">{errorCaja}</div>}
+              
+            </>
           )}
-          {errorCaja && <div style={{ color: '#dc2626', fontWeight: 600, marginBottom: 8 }}>{errorCaja}</div>}
-                          {mensajeCaja && <div style={{ color: mensajeCaja.startsWith('🔓') ? '#059669' : mensajeCaja.startsWith('🔒') ? '#64748b' : '#dc2626', fontWeight: 700, marginBottom: 12 }}>{mensajeCaja}</div>}
         </div>
         {/* Sección de ventas a la derecha */}
         <div style={{
           flex: 1,
-          minWidth: 340,
+          width: isMobile ? '100%' : 'auto',
           background: 'white',
           borderRadius: 16,
           boxShadow: '0 4px 16px rgba(0,0,0,0.08)',
           padding: '2.5rem 2rem',
         }}>
           {/* Botones de navegación */}
-          <div style={{ display: 'flex', gap: 16, marginBottom: 24, flexWrap: 'wrap' }}>
-            <button 
-              onClick={() => { setMostrarGestionVentas(false); setMostrarGestionCajas(false); setMostrarReportes(false); setMostrarGestionStock(false); setMostrarGestionEmpleados(false); }}
-              style={{ 
-                background: (!mostrarGestionVentas && !mostrarGestionCajas && !mostrarReportes && !mostrarGestionStock && !mostrarGestionEmpleados) ? 'linear-gradient(135deg, #fbbf24, #f59e0b)' : '#f1f5f9', 
-                color: (!mostrarGestionVentas && !mostrarGestionCajas && !mostrarReportes && !mostrarGestionStock && !mostrarGestionEmpleados) ? '#1e293b' : '#64748b',
-                border: 'none', 
-                padding: '0.7rem 1.2rem', 
-                borderRadius: 10, 
-                fontWeight: 700, 
-                fontSize: '1rem', 
-                cursor: 'pointer' 
-              }}
-            >
-              🛒 Nueva Venta
-            </button>
-            <button 
-              onClick={() => { setMostrarGestionVentas(true); setMostrarGestionCajas(false); setMostrarReportes(false); setMostrarGestionStock(false); setMostrarGestionEmpleados(false); }}
-              style={{ 
-                background: mostrarGestionVentas ? 'linear-gradient(135deg, #fbbf24, #f59e0b)' : '#f1f5f9', 
-                color: mostrarGestionVentas ? '#1e293b' : '#64748b',
-                border: 'none', 
-                padding: '0.7rem 1.2rem', 
-                borderRadius: 10, 
-                fontWeight: 700, 
-                fontSize: '1rem', 
-                cursor: 'pointer' 
-              }}
-            >
-              📋 Gestionar Ventas
-            </button>
-            <button 
-              onClick={() => { setMostrarGestionVentas(false); setMostrarGestionCajas(true); setMostrarReportes(false); setMostrarGestionStock(false); setMostrarGestionEmpleados(false); }}
-              style={{ 
-                background: mostrarGestionCajas ? 'linear-gradient(135deg, #fbbf24, #f59e0b)' : '#f1f5f9', 
-                color: mostrarGestionCajas ? '#1e293b' : '#64748b',
-                border: 'none', 
-                padding: '0.7rem 1.2rem', 
-                borderRadius: 10, 
-                fontWeight: 700, 
-                fontSize: '1rem', 
-                cursor: 'pointer' 
-              }}
-            >
-              💰 Gestionar Cajas
-            </button>
-            <button 
-              onClick={() => { setMostrarGestionVentas(false); setMostrarGestionCajas(false); setMostrarReportes(false); setMostrarGestionStock(true); setMostrarGestionEmpleados(false); }}
-              style={{ 
-                background: mostrarGestionStock ? 'linear-gradient(135deg, #fbbf24, #f59e0b)' : '#f1f5f9', 
-                color: mostrarGestionStock ? '#1e293b' : '#64748b',
-                border: 'none', 
-                padding: '0.7rem 1.2rem', 
-                borderRadius: 10, 
-                fontWeight: 700, 
-                fontSize: '1rem', 
-                cursor: 'pointer' 
-              }}
-            >
-              📦 Gestionar Stock
-            </button>
-            <button 
-              onClick={() => { setMostrarGestionVentas(false); setMostrarGestionCajas(false); setMostrarReportes(false); setMostrarGestionStock(false); setMostrarGestionEmpleados(true); }}
-              style={{ 
-                background: mostrarGestionEmpleados ? 'linear-gradient(135deg, #fbbf24, #f59e0b)' : '#f1f5f9', 
-                color: mostrarGestionEmpleados ? '#1e293b' : '#64748b',
-                border: 'none', 
-                padding: '0.7rem 1.2rem', 
-                borderRadius: 10, 
-                fontWeight: 700, 
-                fontSize: '1rem', 
-                cursor: 'pointer' 
-              }}
-            >
-              👥 Gestionar Empleados
-            </button>
-            <button 
-              onClick={() => { setMostrarGestionVentas(false); setMostrarGestionCajas(false); setMostrarReportes(true); setMostrarGestionStock(false); setMostrarGestionEmpleados(false); }}
-              style={{ 
-                background: mostrarReportes ? 'linear-gradient(135deg, #fbbf24, #f59e0b)' : '#f1f5f9', 
-                color: mostrarReportes ? '#1e293b' : '#64748b',
-                border: 'none', 
-                padding: '0.7rem 1.2rem', 
-                borderRadius: 10, 
-                fontWeight: 700, 
-                fontSize: '1rem', 
-                cursor: 'pointer' 
-              }}
-            >
-              📊 Reportes
-            </button>
-          </div>
+          <div style={{ display: 'flex', gap: 16, marginBottom: 24, flexWrap: 'wrap', justifyContent:'center' }}>
+  <button
+    onClick={() => { setMostrarGestionVentas(false); setMostrarGestionCajas(false); setMostrarReportes(false); setMostrarGestionStock(false); setMostrarGestionEmpleados(false); setMostrarGestionUsuarios(false); }}
+    style={{
+      background: (!mostrarGestionVentas && !mostrarGestionCajas && !mostrarReportes && !mostrarGestionStock && !mostrarGestionEmpleados && !mostrarGestionUsuarios) ? 'linear-gradient(135deg, #fbbf24, #f59e0b)' : '#f1f5f9',
+      color: (!mostrarGestionVentas && !mostrarGestionCajas && !mostrarReportes && !mostrarGestionStock && !mostrarGestionEmpleados && !mostrarGestionUsuarios) ? '#1e293b' : '#64748b',
+      border: 'none',
+      padding: '0.7rem 1.2rem',
+      borderRadius: 10,
+      fontWeight: 700,
+      fontSize: '1rem',
+      cursor: 'pointer'
+    }}
+    className="admin-nav-btn"
+  >
+    {isMobile ? '🛒' : <>🛒 Nueva Venta</>}
+  </button>
+  <button
+    onClick={() => { setMostrarGestionVentas(true); setMostrarGestionCajas(false); setMostrarReportes(false); setMostrarGestionStock(false); setMostrarGestionEmpleados(false); setMostrarGestionUsuarios(false); }}
+    style={{
+      background: mostrarGestionVentas ? 'linear-gradient(135deg, #fbbf24, #f59e0b)' : '#f1f5f9',
+      color: mostrarGestionVentas ? '#1e293b' : '#64748b',
+      border: 'none',
+      padding: '0.7rem 1.2rem',
+      borderRadius: 10,
+      fontWeight: 700,
+      fontSize: '1rem',
+      cursor: 'pointer'
+    }}
+    className="admin-nav-btn"
+  >
+    {isMobile ? '📋' : <>📋 Gestionar Ventas</>}
+  </button>
+  <button
+    onClick={() => { setMostrarGestionVentas(false); setMostrarGestionCajas(true); setMostrarReportes(false); setMostrarGestionStock(false); setMostrarGestionEmpleados(false); setMostrarGestionUsuarios(false); }}
+    style={{
+      background: mostrarGestionCajas ? 'linear-gradient(135deg, #fbbf24, #f59e0b)' : '#f1f5f9',
+      color: mostrarGestionCajas ? '#1e293b' : '#64748b',
+      border: 'none',
+      padding: '0.7rem 1.2rem',
+      borderRadius: 10,
+      fontWeight: 700,
+      fontSize: '1rem',
+      cursor: 'pointer'
+    }}
+    className="admin-nav-btn"
+  >
+    {isMobile ? '💰' : <>💰 Gestionar Cajas</>}
+  </button>
+  <button
+    onClick={() => { setMostrarGestionVentas(false); setMostrarGestionCajas(false); setMostrarReportes(false); setMostrarGestionStock(true); setMostrarGestionEmpleados(false); setMostrarGestionUsuarios(false); }}
+    style={{
+      background: mostrarGestionStock ? 'linear-gradient(135deg, #fbbf24, #f59e0b)' : '#f1f5f9',
+      color: mostrarGestionStock ? '#1e293b' : '#64748b',
+      border: 'none',
+      padding: '0.7rem 1.2rem',
+      borderRadius: 10,
+      fontWeight: 700,
+      fontSize: '1rem',
+      cursor: 'pointer'
+    }}
+    className="admin-nav-btn"
+  >
+    {isMobile ? '📦' : <>📦 Gestionar Stock</>}
+  </button>
+  {userRol === 'Administrador' && (
+    <button
+      onClick={() => { setMostrarGestionVentas(false); setMostrarGestionCajas(false); setMostrarReportes(false); setMostrarGestionStock(false); setMostrarGestionEmpleados(true); setMostrarGestionUsuarios(false); }}
+      style={{
+        background: mostrarGestionEmpleados ? 'linear-gradient(135deg, #fbbf24, #f59e0b)' : '#f1f5f9',
+        color: mostrarGestionEmpleados ? '#1e293b' : '#64748b',
+        border: 'none',
+        padding: '0.7rem 1.2rem',
+        borderRadius: 10,
+        fontWeight: 700,
+        fontSize: '1rem',
+        cursor: 'pointer'
+      }}
+      className="admin-nav-btn"
+    >
+      {isMobile ? '👥' : <>👥 Gestionar Empleados</>}
+    </button>
+  )}
+  {userRol === 'Administrador' && (
+    <button
+      onClick={() => { setMostrarGestionVentas(false); setMostrarGestionCajas(false); setMostrarReportes(false); setMostrarGestionStock(false); setMostrarGestionEmpleados(false); setMostrarGestionUsuarios(true); }}
+      style={{
+        background: mostrarGestionUsuarios ? 'linear-gradient(135deg, #fbbf24, #f59e0b)' : '#f1f5f9',
+        color: mostrarGestionUsuarios ? '#1e293b' : '#64748b',
+        border: 'none',
+        padding: '0.7rem 1.2rem',
+        borderRadius: 10,
+        fontWeight: 700,
+        fontSize: '1rem',
+        cursor: 'pointer'
+      }}
+      className="admin-nav-btn"
+    >
+      {isMobile ? '👤' : <>👤 Gestionar Usuarios</>}
+    </button>
+  )}
+  {userRol === 'Administrador' && (
+    <button
+      onClick={() => { setMostrarGestionVentas(false); setMostrarGestionCajas(false); setMostrarReportes(true); setMostrarGestionStock(false); setMostrarGestionEmpleados(false); setMostrarGestionUsuarios(false); }}
+      style={{
+        background: mostrarReportes ? 'linear-gradient(135deg, #fbbf24, #f59e0b)' : '#f1f5f9',
+        color: mostrarReportes ? '#1e293b' : '#64748b',
+        border: 'none',
+        padding: '0.7rem 1.2rem',
+        borderRadius: 10,
+        fontWeight: 700,
+        fontSize: '1rem',
+        cursor: 'pointer'
+      }}
+      className="admin-nav-btn"
+    >
+      {isMobile ? '📊' : <>📊 Reportes</>}
+    </button>
+  )}
+</div>
 
-          {mostrarGestionVentas ? (
+          {mostrarGestionVentas && (userRol === 'Administrador' || userRol === 'Empleado') ? (
             // Vista de gestión de ventas
             <div>
               <h2 style={{ color: '#1e293b', fontWeight: 800, marginBottom: 24 }}>📋 Gestión de Ventas</h2>
@@ -1793,7 +2084,7 @@ window.open(urlWhatsApp, '_blank');
               <div style={{ 
                 background: '#f8fafc', 
                 borderRadius: 12, 
-                padding: mostrarFiltrosVentas ? '1.5rem' : '1rem', 
+                padding: '1rem',
                 marginBottom: 24,
                 boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
                 border: '1px solid #e2e8f0'
@@ -1824,7 +2115,7 @@ window.open(urlWhatsApp, '_blank');
                 
                 {mostrarFiltrosVentas && (
                   <>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12, marginBottom: 16 }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(5, 1fr)', gap: 12, marginBottom: 16 }}>
                       {/* Filtro por vendedor */}
                       <div style={{ minWidth: '85px' }}>
                         <label style={{ display: 'block', fontWeight: 600, color: '#64748b', marginBottom: 6 }}>
@@ -2001,7 +2292,7 @@ window.open(urlWhatsApp, '_blank');
                             cursor: 'pointer'
                           }}
                         >
-                          🗑️ Limpiar filtros
+                         {isMobile ? ' 🗑️' : ' 🗑️ Limpiar filtros'}
                         </button>
                       </div>
                     </div>
@@ -2104,12 +2395,7 @@ window.open(urlWhatsApp, '_blank');
                       </div>
                       
                       {/* Observaciones */}
-                      {venta.observaciones && (
-                        <div style={{ marginBottom: 12 }}>
-                          <div style={{ fontWeight: 600, color: '#64748b', marginBottom: 4 }}>Observaciones:</div>
-                          <div style={{ fontSize: 14, color: '#475569' }}>{venta.observaciones}</div>
-                        </div>
-                      )}
+
                       
                       {/* Botón eliminar */}
                       <div style={{ textAlign: 'right' }}>
@@ -2135,7 +2421,7 @@ window.open(urlWhatsApp, '_blank');
                 </div>
               )}
             </div>
-          ) : mostrarGestionCajas ? (
+          ) : mostrarGestionCajas && (userRol === 'Administrador' || userRol === 'Empleado') ? (
             // Vista de gestión de cajas
             <div>
               <h2 style={{ color: '#1e293b', fontWeight: 800, marginBottom: 24 }}>💰 Gestión de Cajas</h2>
@@ -2144,7 +2430,7 @@ window.open(urlWhatsApp, '_blank');
               <div style={{ 
                 background: '#f8fafc', 
                 borderRadius: 12, 
-                padding: mostrarFiltrosCajas ? '1.5rem' : '1rem', 
+                padding: '1rem',
                 marginBottom: 24,
                 boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
                 border: '1px solid #e2e8f0'
@@ -2175,9 +2461,9 @@ window.open(urlWhatsApp, '_blank');
                 
                 {mostrarFiltrosCajas && (
                   <>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12, marginBottom: 16 }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(5, 1fr)', gap: 12, marginBottom: 16 }}>
                       {/* Filtro por vendedor */}
-                      <div style={{ minWidth: '85px' }}>
+                      <div>
                         <label style={{ display: 'block', fontWeight: 600, color: '#64748b', marginBottom: 6 }}>
                           👤 Vendedor
                         </label>
@@ -2351,7 +2637,7 @@ window.open(urlWhatsApp, '_blank');
                             cursor: 'pointer'
                           }}
                         >
-                          🗑️ Limpiar filtros
+                          {isMobile ? ' 🗑️' : ' 🗑️ Limpiar filtros'}
                         </button>
                       </div>
                     </div>
@@ -2382,7 +2668,7 @@ window.open(urlWhatsApp, '_blank');
                   {cajas.length === 0 ? 'No hay cajas registradas' : 'No hay cajas que coincidan con los filtros'}
                 </div>
               ) : (
-                <div style={{ maxHeight: '70vh', overflowY: 'auto' }}>
+                <div style={{ maxHeight: '70vh', maxWidth:'auto', overflowY: 'auto' }}>
                   {obtenerCajasFiltradas().map((caja, index) => (
                     <div key={caja.id} style={{ 
                       border: '1px solid #e2e8f0', 
@@ -2460,12 +2746,7 @@ window.open(urlWhatsApp, '_blank');
                       </div>
                       
                       {/* Observaciones */}
-                      {caja.observaciones && (
-                        <div style={{ marginBottom: 12 }}>
-                          <div style={{ fontWeight: 600, color: '#64748b', marginBottom: 4 }}>Observaciones:</div>
-                          <div style={{ fontSize: 14, color: '#475569' }}>{caja.observaciones}</div>
-                        </div>
-                      )}
+
                       
                       {/* Botón eliminar */}
                       <div style={{ textAlign: 'right' }}>
@@ -2491,7 +2772,89 @@ window.open(urlWhatsApp, '_blank');
                 </div>
               )}
             </div>
-          ) : mostrarGestionEmpleados ? (
+          ) : mostrarGestionUsuarios && userRol === 'Administrador' ? (
+        <div>
+          <h2 style={{ color: '#1e293b', fontWeight: 800, marginBottom: 24 }}>👤 Gestión de Usuarios</h2>
+          {/* Agregar nuevo usuario */}
+          <div style={{ background: '#f8fafc', borderRadius: 12, padding: '1.5rem', marginBottom: 24, border: '1px solid #e2e8f0' }}>
+            <h3 style={{ color: '#1e293b', fontWeight: 700, marginBottom: 16 }}>➕ Agregar Nuevo Usuario</h3>
+            <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+              <div style={{ flex: 1, minWidth: 180 }}>
+                <label style={{ display: 'block', fontWeight: 600, color: '#64748b', marginBottom: 6 }}>Nombre</label>
+                <input type="text" value={nuevoUsuario.nombre} onChange={e => setNuevoUsuario({ ...nuevoUsuario, nombre: e.target.value })} placeholder="Nombre completo" style={{ width: '100%', padding: '0.7rem', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: '1rem', background: 'white' }} />
+              </div>
+              <div style={{ flex: 1, minWidth: 180 }}>
+                <label style={{ display: 'block', fontWeight: 600, color: '#64748b', marginBottom: 6 }}>Usuario</label>
+                <input type="text" value={nuevoUsuario.usuario} onChange={e => setNuevoUsuario({ ...nuevoUsuario, usuario: e.target.value })} placeholder="Usuario" style={{ width: '100%', padding: '0.7rem', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: '1rem', background: 'white' }} />
+              </div>
+              <div style={{ flex: 1, minWidth: 180 }}>
+                <label style={{ display: 'block', fontWeight: 600, color: '#64748b', marginBottom: 6 }}>Contraseña</label>
+                <input type="password" value={nuevoUsuario.password} onChange={e => setNuevoUsuario({ ...nuevoUsuario, password: e.target.value })} placeholder="Contraseña" style={{ width: '100%', padding: '0.7rem', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: '1rem', background: 'white' }} />
+              </div>
+              <div style={{ flex: 1, minWidth: 140 }}>
+                <label style={{ display: 'block', fontWeight: 600, color: '#64748b', marginBottom: 6 }}>Rol</label>
+                <select value={nuevoUsuario.rol} onChange={e => setNuevoUsuario({ ...nuevoUsuario, rol: e.target.value })} style={{ width: '100%', padding: '0.7rem', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: '1rem', background: 'white' }}>
+                  <option value="Empleado">Empleado</option>
+                  <option value="Administrador">Administrador</option>
+                </select>
+              </div>
+              <button onClick={agregarUsuario} disabled={!nuevoUsuario.nombre || !nuevoUsuario.usuario || !nuevoUsuario.password} style={{ background: (!nuevoUsuario.nombre || !nuevoUsuario.usuario || !nuevoUsuario.password) ? '#f1f5f9' : 'linear-gradient(135deg, #059669, #10b981)', color: (!nuevoUsuario.nombre || !nuevoUsuario.usuario || !nuevoUsuario.password) ? '#64748b' : '#fff', border: 'none', padding: '0.7rem 1.2rem', borderRadius: 8, fontWeight: 700, fontSize: '1rem', cursor: (!nuevoUsuario.nombre || !nuevoUsuario.usuario || !nuevoUsuario.password) ? 'not-allowed' : 'pointer', minWidth: 120 }}>
+                ➕ Agregar
+              </button>
+            </div>
+          </div>
+
+          {/* Lista de usuarios */}
+          <div style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: 12, overflow: 'hidden', marginBottom: 32 }}>
+            <div style={{ background: '#f8fafc', padding: '1rem 1.5rem', borderBottom: '1px solid #e2e8f0', fontWeight: 700, color: '#1e293b' }}>
+              Usuarios Registrados ({usuarios.length})
+            </div>
+            {loadingUsuarios ? (
+              <div style={{ textAlign: 'center', padding: '2rem', color: '#64748b' }}>Cargando usuarios...</div>
+            ) : errorUsuarios ? (
+              <div style={{ color: '#dc2626', textAlign: 'center', padding: '2rem' }}>{errorUsuarios}</div>
+            ) : usuarios.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '2rem', color: '#64748b' }}>No hay usuarios registrados</div>
+            ) : (
+              <div style={{ maxHeight: '60vh', overflowY: 'auto' }}>
+                {usuarios.map((usuario, index) => (
+                  <div key={usuario.id} style={{ padding: '1rem 1.5rem', borderBottom: index < usuarios.length - 1 ? '1px solid #e2e8f0' : 'none', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+                    {editandoUsuario && editandoUsuario.id === usuario.id ? (
+                      // Modo edición
+                      <div style={{ display: 'flex', gap: 12, alignItems: 'center', flex: 1, flexWrap: 'wrap' }}>
+                        <input type="text" value={usuarioEditando.nombre} onChange={e => setUsuarioEditando({ ...usuarioEditando, nombre: e.target.value })} style={{ flex: 1, minWidth: 120, padding: '0.7rem', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: '1rem', background: 'white' }} />
+                        <input type="text" value={usuarioEditando.usuario} onChange={e => setUsuarioEditando({ ...usuarioEditando, usuario: e.target.value })} style={{ flex: 1, minWidth: 120, padding: '0.7rem', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: '1rem', background: 'white' }} />
+                        <input type="password" value={usuarioEditando.password} onChange={e => setUsuarioEditando({ ...usuarioEditando, password: e.target.value })} placeholder="Nueva contraseña (opcional)" style={{ flex: 1, minWidth: 120, padding: '0.7rem', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: '1rem', background: 'white' }} />
+                        <select value={usuarioEditando.rol} onChange={e => setUsuarioEditando({ ...usuarioEditando, rol: e.target.value })} style={{ flex: 1, minWidth: 120, padding: '0.7rem', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: '1rem', background: 'white' }}>
+                          <option value="Empleado">Empleado</option>
+                          <option value="Administrador">Administrador</option>
+                        </select>
+                        <button onClick={editarUsuario} style={{ background: 'linear-gradient(135deg, #059669, #10b981)', color: '#fff', border: 'none', padding: '0.5rem 1rem', borderRadius: 6, fontWeight: 600, fontSize: '0.9rem', cursor: 'pointer' }}>✅ Guardar</button>
+                        <button onClick={cancelarEdicionUsuario} style={{ background: '#f1f5f9', color: '#64748b', border: 'none', padding: '0.5rem 1rem', borderRadius: 6, fontWeight: 600, fontSize: '0.9rem', cursor: 'pointer' }}>❌ Cancelar</button>
+                      </div>
+                    ) : (
+                      // Modo visualización
+                      <>
+                                                 <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1 }}>
+                           <div style={{ background: 'linear-gradient(135deg, #0ea5e9, #3b82f6)', color: 'white', width: 40, height: 40, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: '1.1rem' }}>{usuario.nombre && usuario.nombre.charAt ? usuario.nombre.charAt(0).toUpperCase() : '?'}</div>
+                           <div>
+                             <div style={{ fontWeight: 600, color: '#1e293b', fontSize: '1.1rem' }}>{usuario.nombre || 'Sin nombre'}</div>
+                             <div style={{ fontSize: 12, color: '#64748b' }}>Usuario: {usuario.usuario} | Rol: {usuario.rol}</div>
+                           </div>
+                         </div>
+                         <div style={{ display: 'flex', gap: 8 }}>
+                           <button onClick={() => iniciarEdicionUsuario(usuario)} style={{ background: 'linear-gradient(135deg, #fbbf24, #f59e0b)', color: '#1e293b', border: 'none', padding: '0.5rem 1rem', borderRadius: 6, fontWeight: 600, fontSize: '0.9rem', cursor: 'pointer' }}>✏️ Editar</button>
+                           <button onClick={() => eliminarUsuario(usuario.usuario)} style={{ background: 'linear-gradient(135deg, #ef4444, #dc2626)', color: '#fff', border: 'none', padding: '0.5rem 1rem', borderRadius: 6, fontWeight: 600, fontSize: '0.9rem', cursor: 'pointer' }}>🗑️ Eliminar</button>
+                         </div>
+                      </>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+              ) : mostrarGestionEmpleados && userRol === 'Administrador' ? (
             // Vista de gestión de empleados
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
@@ -2513,7 +2876,7 @@ window.open(urlWhatsApp, '_blank');
                     gap: 8
                   }}
                 >
-                  {loadingEmpleados ? '🔄 Cargando...' : '🔄 Recargar'}
+                  {loadingEmpleados ? isMobile ? '🔄' :'🔄 Cargando...' : isMobile ? '🔄' : '🔄 Recargar'}
                 </button>
               </div>
 
@@ -2698,7 +3061,7 @@ window.open(urlWhatsApp, '_blank');
                 </div>
               )}
             </div>
-          ) : mostrarReportes ? (
+          ) : mostrarReportes && userRol === 'Administrador' ? (
             // Vista de reportes
             <div>
               <h2 style={{ color: '#1e293b', fontWeight: 800, marginBottom: 24 }}>📊 Panel de Reportes</h2>
@@ -2712,7 +3075,12 @@ window.open(urlWhatsApp, '_blank');
                 marginBottom: 32 
               }}>
                 <h3 style={{ color: '#1e293b', fontWeight: 700, marginBottom: 16 }}>🔍 Filtros</h3>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr auto', gap: 16, alignItems: 'end' }}>
+                <div style={{ 
+                  display: 'grid', 
+                  gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr 1fr auto', 
+                  gap: 16, 
+                  alignItems: 'end' 
+                }}>
                   {/* Filtro por mes */}
                   <div>
                     <label style={{ fontWeight: 600, color: '#64748b', marginBottom: 6, display: 'block' }}>📅 Mes</label>
@@ -2806,7 +3174,8 @@ window.open(urlWhatsApp, '_blank');
                       fontSize: '1rem', 
                       cursor: 'pointer',
                       height: 'fit-content',
-                      whiteSpace: 'nowrap'
+                      whiteSpace: 'nowrap',
+                      width: isMobile ? '100%' : 'auto'
                     }}
                   >
                     🗑️ Limpiar Filtros
@@ -2929,11 +3298,12 @@ window.open(urlWhatsApp, '_blank');
                                   🏦 Transferencia: {formatearPrecio(obtenerCajaConMayorVenta().transferencia)}
                                 </div>
                               )}
+                              {/* 
                               {(obtenerCajaConMayorVenta().pos || 0) > 0 && (
                                 <div style={{ fontSize: 14, fontWeight: 600 }}>
                                   💳 POS: {formatearPrecio(obtenerCajaConMayorVenta().pos)}
                                 </div>
-                              )}
+                              )}*/}
                             </div>
                           </div>
                         </div>
@@ -3092,7 +3462,7 @@ window.open(urlWhatsApp, '_blank');
                 <div style={{ textAlign: 'center', padding: '2rem', color: '#64748b' }}>No hay métricas disponibles</div>
               )}
             </div>
-          ) : mostrarGestionStock ? (
+          ) : mostrarGestionStock && (userRol === 'Administrador' || userRol === 'Empleado') ? (
             // Vista de gestión de stock
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
@@ -3464,6 +3834,7 @@ window.open(urlWhatsApp, '_blank');
                 <h2 style={{ color: '#1e293b', fontWeight: 800, marginBottom: 24 }}>🛒 Nueva Venta</h2>
                 
                 {/* Filtro de búsqueda en la parte superior */}
+
                 <div ref={searchContainerRef} style={{ marginBottom: 24 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 6 }}>
                     <label style={{ fontWeight: 600, color: '#64748b', flex: 1 }}>🔍 Buscar producto</label>
@@ -3490,6 +3861,73 @@ window.open(urlWhatsApp, '_blank');
                     >
                       🚫 {mostrarSinStock ? 'Ocultar sin stock' : 'Mostrar sin stock'}
                     </button>
+                  </div>
+                  
+                  {/* Botones de filtro por categorías */}
+                  <div style={{ marginBottom: 12 }}>
+                    <div 
+                      className={isMobile ? 'admin-categorias-container' : ''}
+                      style={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        gap: 8, 
+                        marginBottom: 8,
+                        flexWrap: isMobile ? 'wrap' : 'nowrap',
+                        overflowX: isMobile ? 'auto' : 'visible',
+                        paddingBottom: isMobile ? '8px' : '0'
+                      }}
+                    >
+                      <span style={{ fontWeight: 600, color: '#64748b', fontSize: '0.875rem', flexShrink: 0 }}>📂 Categorías:</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCategoriaSeleccionadaVenta('');
+                          setMostrarTodosProductos(true);
+                        }}
+                        style={{ 
+                          padding: isMobile ? '0.4rem 0.6rem' : '0.5rem 0.8rem', 
+                          borderRadius: 6, 
+                          border: '1px solid #cbd5e1',
+                          fontSize: isMobile ? '0.7rem' : '0.75rem',
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                          background: categoriaSeleccionadaVenta === '' ? '#fbbf24' : 'white',
+                          color: categoriaSeleccionadaVenta === '' ? '#1e293b' : '#6b7280',
+                          transition: 'all 0.2s ease',
+                          whiteSpace: 'nowrap',
+                          flexShrink: 0,
+                          minWidth: isMobile ? 'auto' : 'auto'
+                        }}
+                      >
+                        📦 Todas
+                      </button>
+                      {[...new Set(productos.map(p => p.categoria).filter(Boolean))].map(categoria => (
+                        <button
+                          key={categoria}
+                          type="button"
+                          onClick={() => {
+                            setCategoriaSeleccionadaVenta(categoria);
+                            setMostrarTodosProductos(true);
+                          }}
+                          style={{ 
+                            padding: isMobile ? '0.4rem 0.6rem' : '0.5rem 0.8rem', 
+                            borderRadius: 6, 
+                            border: '1px solid #cbd5e1',
+                            fontSize: isMobile ? '0.7rem' : '0.75rem',
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                            background: categoriaSeleccionadaVenta === categoria ? '#fbbf24' : 'white',
+                            color: categoriaSeleccionadaVenta === categoria ? '#1e293b' : '#6b7280',
+                            transition: 'all 0.2s ease',
+                            whiteSpace: 'nowrap',
+                            flexShrink: 0,
+                            minWidth: isMobile ? 'auto' : 'auto'
+                          }}
+                        >
+                          {categoria}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                   <input 
                     type="text" 
@@ -3529,11 +3967,13 @@ window.open(urlWhatsApp, '_blank');
                     }}>
                       {(busqueda ? productos.filter(p => {
                           const coincideBusqueda = p.nombre.toLowerCase().includes(busqueda.toLowerCase()) || p.categoria.toLowerCase().includes(busqueda.toLowerCase());
+                          const coincideCategoria = !categoriaSeleccionadaVenta || p.categoria === categoriaSeleccionadaVenta;
                           const tieneStock = p.stock === undefined || p.stock === '' || !isNaN(Number(p.stock)) && Number(p.stock) > 0;
-                          return coincideBusqueda && (mostrarSinStock || tieneStock);
+                          return coincideBusqueda && coincideCategoria && (mostrarSinStock || tieneStock);
                         }) : productos.filter(p => {
+                          const coincideCategoria = !categoriaSeleccionadaVenta || p.categoria === categoriaSeleccionadaVenta;
                           const tieneStock = p.stock === undefined || p.stock === '' || !isNaN(Number(p.stock)) && Number(p.stock) > 0;
-                          return mostrarSinStock || tieneStock;
+                          return coincideCategoria && (mostrarSinStock || tieneStock);
                         }).sort((a, b) => {
                           // Ordenar por productos más vendidos
                           const aVentas = productosVendidos.find(pv => pv.nombre === a.nombre)?.cantidad || 0;
@@ -3552,10 +3992,10 @@ window.open(urlWhatsApp, '_blank');
                             alignItems: 'center', 
                             gap: 12,
                             transition: 'background-color 0.2s',
-                            background: (p.stock !== undefined && p.stock !== '' && !isNaN(Number(p.stock)) && Number(p.stock) <= 0) ? '#f5f5f5' : 'transparent'
+                            background: (p.stock !== undefined && p.stock !== '' && !isNaN(Number(p.stock)) && Number(p.stock) === 0) ? '#f5f5f5' : 'transparent'
                           }} 
-                          onMouseEnter={(e) => e.target.style.backgroundColor = (p.stock !== undefined && p.stock !== '' && !isNaN(Number(p.stock)) && Number(p.stock) <= 0) ? '#f5f5f5' : '#f8fafc'}
-                          onMouseLeave={(e) => e.target.style.backgroundColor = (p.stock !== undefined && p.stock !== '' && !isNaN(Number(p.stock)) && Number(p.stock) <= 0) ? '#f5f5f5' : 'transparent'}
+                          onMouseEnter={(e) => e.target.style.backgroundColor = (p.stock !== undefined && p.stock !== '' && !isNaN(Number(p.stock)) && Number(p.stock) === 0) ? '#f5f5f5' : '#f8fafc'}
+                          onMouseLeave={(e) => e.target.style.backgroundColor = (p.stock !== undefined && p.stock !== '' && !isNaN(Number(p.stock)) && Number(p.stock) === 0) ? '#f5f5f5' : 'transparent'}
                           onClick={() => { setProductoSeleccionado(p); setBusqueda(''); setMostrarTodosProductos(false); }}
                         >
                           <span style={{ fontWeight: 600, flex: 1 }}>
@@ -3570,16 +4010,24 @@ window.open(urlWhatsApp, '_blank');
                       ))}
                       {(busqueda ? productos.filter(p => {
                           const coincideBusqueda = p.nombre.toLowerCase().includes(busqueda.toLowerCase()) || p.categoria.toLowerCase().includes(busqueda.toLowerCase());
+                          const coincideCategoria = !categoriaSeleccionadaVenta || p.categoria === categoriaSeleccionadaVenta;
                           const tieneStock = p.stock === undefined || p.stock === '' || !isNaN(Number(p.stock)) && Number(p.stock) > 0;
-                          return coincideBusqueda && (mostrarSinStock || tieneStock);
+                          return coincideBusqueda && coincideCategoria && (mostrarSinStock || tieneStock);
                         }) : productos.filter(p => {
+                          const coincideCategoria = !categoriaSeleccionadaVenta || p.categoria === categoriaSeleccionadaVenta;
                           const tieneStock = p.stock === undefined || p.stock === '' || !isNaN(Number(p.stock)) && Number(p.stock) > 0;
-                          return mostrarSinStock || tieneStock;
+                          return coincideCategoria && (mostrarSinStock || tieneStock);
                         })).length === 0 && (
                         <div style={{ padding: '1rem', color: '#64748b', textAlign: 'center' }}>
-                          {!mostrarSinStock && productos.filter(p => p.nombre.toLowerCase().includes(busqueda.toLowerCase()) || p.categoria.toLowerCase().includes(busqueda.toLowerCase())).some(p => !(p.stock === undefined || p.stock === '' || !isNaN(Number(p.stock)) && Number(p.stock) > 0)) 
+                          {!mostrarSinStock && productos.filter(p => {
+                            const coincideBusqueda = p.nombre.toLowerCase().includes(busqueda.toLowerCase()) || p.categoria.toLowerCase().includes(busqueda.toLowerCase());
+                            const coincideCategoria = !categoriaSeleccionadaVenta || p.categoria === categoriaSeleccionadaVenta;
+                            return coincideBusqueda && coincideCategoria;
+                          }).some(p => !(p.stock === undefined || p.stock === '' || !isNaN(Number(p.stock)) && Number(p.stock) > 0)) 
                             ? 'No hay resultados con stock disponible. Usa el botón 🚫 para ver productos sin stock.' 
-                            : 'No hay resultados'}
+                            : categoriaSeleccionadaVenta 
+                              ? `No hay productos en la categoría "${categoriaSeleccionadaVenta}"${busqueda ? ` que coincidan con "${busqueda}"` : ''}`
+                              : 'No hay resultados'}
                         </div>
                       )}
                     </div>
@@ -3588,93 +4036,272 @@ window.open(urlWhatsApp, '_blank');
 
                 {/* Producto seleccionado y controles */}
                 {productoSeleccionado && (
-                  <div style={{ 
-                    background: '#f8fafc', 
-                    border: '1px solid #e2e8f0', 
-                    borderRadius: 12, 
-                    padding: 20, 
+                  <div style={{
+                    background: '#f8fafc',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: 12,
+                    padding: isMobile ? '16px' : '20px',
                     marginBottom: 24,
                     display: 'flex',
-                    alignItems: 'center',
-                    gap: 20
+                    flexDirection: isMobile ? 'column' : 'row',
+                    alignItems: isMobile ? 'stretch' : 'center',
+                    gap: isMobile ? 16 : 20,
+                    flexWrap: 'wrap'
                   }}>
                     {/* Imagen del producto */}
+
                     <div style={{ 
-                      width: 80, 
-                      height: 80, 
+                      width: isMobile ? '100%' : 80, 
+                      height: isMobile ? 'auto' : 80, 
                       borderRadius: 8, 
-                      overflow: 'hidden',
-                      background: '#e2e8f0',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center'
+                      background: '#f8fafc', 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      justifyContent: 'center',
+                      border: '1px solid #e2e8f0',
+                      flexShrink: 0,
+                      ...(isMobile && { marginBottom: 8 })
                     }}>
                       {productoSeleccionado.imagen ? (
-                        <img 
-                          src={productoSeleccionado.imagen} 
-                          alt={productoSeleccionado.nombre}
-                          style={{ 
-                            width: '100%', 
-                            height: '100%', 
-                            objectFit: 'cover' 
-                          }}
-                        />
+                        getImagenUrl(productoSeleccionado.imagen) ? (
+                          <img 
+                            src={getImagenUrl(productoSeleccionado.imagen)} 
+                            alt={productoSeleccionado.nombre}
+                            style={{ 
+                              width: '100%', 
+                              height: isMobile ? '120px' : '100%', 
+                              objectFit: 'cover', 
+                              borderRadius: 8 
+                            }}
+                            onError={(e) => {
+                              e.target.style.display = 'none';
+                              e.target.nextSibling.style.display = 'flex';
+                            }}
+                          />
+                        ) : (
+                          <span style={{ fontSize: isMobile ? '2rem' : '1.5rem' }}>⚠️</span>
+                        )
                       ) : (
-                        <span style={{ color: '#64748b', fontSize: 24 }}>📦</span>
+                        <span style={{ fontSize: isMobile ? '2rem' : '1.5rem' }}>📦</span>
                       )}
+                      {/* Fallback para errores de carga */}
+                      <div 
+                        style={{ 
+                          display: 'none',
+                          width: '100%', 
+                          height: isMobile ? '120px' : '100%', 
+                          alignItems: 'center', 
+                          justifyContent: 'center',
+                          background: '#fef3c7',
+                          borderRadius: 8,
+                          color: '#92400e',
+                          fontSize: isMobile ? '0.8rem' : '0.7rem',
+                          textAlign: 'center',
+                          padding: '8px'
+                        }}
+                      >
+                        Error al cargar imagen
+                      </div>
                     </div>
                     
                     {/* Información del producto */}
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontWeight: 700, fontSize: 18, marginBottom: 4 }}>{productoSeleccionado.nombre}</div>
-                      <div style={{ color: '#f59e0b', fontWeight: 500, marginBottom: 8 }}>{productoSeleccionado.categoria}</div>
-                      <div style={{ color: '#059669', fontWeight: 700, fontSize: 16, marginBottom: 8 }}>
-                        {formatearPrecio(productoSeleccionado.oferta && calcularPrecioOferta(productoSeleccionado.precio, productoSeleccionado.oferta) !== null ? calcularPrecioOferta(productoSeleccionado.precio, productoSeleccionado.oferta) : productoSeleccionado.precio)}
+                    <div style={{ 
+                      flex: 1, 
+                      minWidth: isMobile ? 'auto' : 120,
+                      display: 'flex',
+                      flexDirection: isMobile ? 'column' : 'row',
+                      gap: isMobile ? 12 : 16,
+                      alignItems: isMobile ? 'stretch' : 'center'
+                    }}>
+                      {/* Nombre, categoría y precio - En PC van en línea */}
+                      <div style={{ 
+                        display: 'flex', 
+                        flexDirection: isMobile ? 'column' : 'row',
+                        alignItems: isMobile ? 'flex-start' : 'center',
+                        gap: isMobile ? 8 : 16,
+                        flexWrap: 'nowrap',
+                        marginBottom: isMobile ? 0 : 0,
+                        fontSize: isMobile ? '0.95rem' : '1rem',
+                        overflowX: 'auto',
+                        flex: isMobile ? 'none' : 1
+                      }}>
+                        {/* Nombre y categoría - En PC categoría va debajo */}
+                        <div style={{
+                          display: 'flex',
+                          flexDirection: isMobile ? 'column' : 'column',
+                          gap: isMobile ? 0 : 4,
+                          alignItems: isMobile ? 'flex-start' : 'flex-start'
+                        }}>
+                          <span style={{ 
+                            fontWeight: 700, 
+                            color: '#1e293b',
+                            maxWidth: isMobile ? '100%' : 200,
+                            fontSize: '0.9rem',
+                            wordBreak: 'break-word',
+                            whiteSpace: 'normal'
+                          }}>
+                            {productoSeleccionado.nombre} ({productoSeleccionado.stock || '∞'})
+                          </span>
+                          <span style={{ 
+                            color: '#f59e0b', 
+                            fontWeight: 500,
+                            whiteSpace: 'nowrap',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            maxWidth: isMobile ? '100%' : 160,
+                            display: 'inline-block',
+                            fontSize: isMobile ? 'inherit' : '0.9rem'
+                          }}>
+                            {productoSeleccionado.categoria}
+                          </span>
+                        </div>
+                        <span style={{ 
+                          color: '#059669', 
+                          fontWeight: 700,
+                          whiteSpace: 'nowrap',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          maxWidth: isMobile ? '100%' : 100,
+                          display: 'inline-block',
+                          fontSize: '1.3rem'
+                        }}>
+                          {formatearPrecio(productoSeleccionado.oferta && calcularPrecioOferta(productoSeleccionado.precio, productoSeleccionado.oferta) !== null ? calcularPrecioOferta(productoSeleccionado.precio, productoSeleccionado.oferta) : productoSeleccionado.precio)}
+                        </span>
                       </div>
-                      <div style={{ color: '#64748b', fontSize: 13 }}>Stock: {productoSeleccionado.stock || '∞'}</div>
+                      
+                      {/* Controles de cantidad y botón agregar - En PC van en línea */}
+                      <div style={{ 
+                        display: 'flex', 
+                        flexDirection: isMobile ? 'column' : 'row',
+                        alignItems: isMobile ? 'stretch' : 'center',
+                        gap: isMobile ? 12 : 16,
+                        flexWrap: 'nowrap',
+                        marginBottom: isMobile ? 0 : 0,
+                        overflowX: 'auto',
+                        flex: isMobile ? 'none' : 'none'
+                      }}>
+                        <div style={{ 
+                          display: 'flex', 
+                          alignItems: 'center', 
+                          gap: isMobile ? 8 : 8,
+                          justifyContent: isMobile ? 'space-between' : 'flex-start'
+                        }}>
+                          
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                            <button
+                              onClick={decrementarCantidad}
+                              disabled={Number(cantidad) <= 1}
+                              style={{
+                                width: 36,
+                                height: 36,
+                                background: Number(cantidad) <= 1 ? '#f3f4f6' : '#ef4444',
+                                color: Number(cantidad) <= 1 ? '#9ca3af' : 'white',
+                                border: 'none',
+                                borderRadius: 6,
+                                fontSize: '1.2rem',
+                                fontWeight: 700,
+                                cursor: Number(cantidad) <= 1 ? 'not-allowed' : 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                transition: 'all 0.2s ease'
+                              }}
+                              title="Reducir cantidad"
+                            >
+                              -
+                            </button>
+                            <input 
+                              type="text" 
+                              min={1} 
+                              max={productoSeleccionado.stock || 999} 
+                              value={cantidad} 
+                              onChange={e => { 
+                                const valor = e.target.value;
+                                if (/^\d*$/.test(valor)) {
+                                  const numValor = Number(valor) || 1;
+                                  const stockDisponible = productoSeleccionado?.stock !== undefined && productoSeleccionado?.stock !== '' && !isNaN(Number(productoSeleccionado?.stock)) ? Number(productoSeleccionado.stock) : 999;
+                                  const cantidadFinal = Math.min(Math.max(numValor, 1), stockDisponible, 999);
+                                  setCantidad(String(cantidadFinal));
+                                }
+                              }} 
+                              style={{ 
+                                width: 40, 
+                                padding: '0.6rem', 
+                                borderRadius: 6, 
+                                border: '1px solid #cbd5e1', 
+                                fontSize: '1rem',
+                                textAlign: 'center'
+                              }} 
+                            />
+                            <button
+                              onClick={incrementarCantidad}
+                              disabled={Number(cantidad) >= Math.min(productoSeleccionado?.stock || 999, 999)}
+                              style={{
+                                width: 36,
+                                height: 36,
+                                background: Number(cantidad) >= Math.min(productoSeleccionado?.stock || 999, 999) ? '#f3f4f6' : '#10b981',
+                                color: Number(cantidad) >= Math.min(productoSeleccionado?.stock || 999, 999) ? '#9ca3af' : 'white',
+                                border: 'none',
+                                borderRadius: 6,
+                                fontSize: '1.2rem',
+                                fontWeight: 700,
+                                cursor: Number(cantidad) >= Math.min(productoSeleccionado?.stock || 999, 999) ? 'not-allowed' : 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                transition: 'all 0.2s ease'
+                              }}
+                              title="Aumentar cantidad"
+                            >
+                              +
+                            </button>
+                          </div>
+                        </div>
+                        
+                        {/* Botón Agregar */}
+                        <button 
+                          onClick={agregarAlCarrito} 
+                          disabled={productoSeleccionado && productoSeleccionado.stock !== undefined && productoSeleccionado.stock !== '' && !isNaN(Number(productoSeleccionado.stock)) && Number(productoSeleccionado.stock) === 0}
+                          style={{
+                            background: productoSeleccionado && productoSeleccionado.stock !== undefined && productoSeleccionado.stock !== '' && !isNaN(Number(productoSeleccionado.stock)) && Number(productoSeleccionado.stock) === 0 
+                              ? '#f3f4f6' 
+                              : 'linear-gradient(135deg, #fbbf24, #f59e0b)',
+                            color: productoSeleccionado && productoSeleccionado.stock !== undefined && productoSeleccionado.stock !== '' && !isNaN(Number(productoSeleccionado.stock)) && Number(productoSeleccionado.stock) === 0 
+                              ? '#9ca3af' 
+                              : '#1e293b',
+                            border: 'none',
+                            padding: isMobile ? '1rem' : '0.8rem 1.5rem',
+                            borderRadius: isMobile ? 10 : 10,
+                            fontWeight: 700,
+                            fontSize: isMobile ? '1.1rem' : '1rem',
+                            cursor: productoSeleccionado && productoSeleccionado.stock !== undefined && productoSeleccionado.stock !== '' && !isNaN(Number(productoSeleccionado.stock)) && Number(productoSeleccionado.stock) === 0 
+                              ? 'not-allowed' 
+                              : 'pointer',
+                            minWidth: isMobile ? '100%' : 120,
+                            transition: 'background 0.2s'
+                          }}
+                        >
+                          ➕ Agregar
+                        </button>
+                      </div>
                     </div>
                     
-                    {/* Controles de cantidad y agregar */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                      <div>
-                        <label style={{ fontWeight: 600, color: '#64748b', marginRight: 8, fontSize: 14 }}>Cantidad</label>
-                        <input 
-                          type="text" 
-                          min={1} 
-                          max={productoSeleccionado.stock || 99} 
-                          value={cantidad} 
-                          onChange={e => { if (/^\d*$/.test(e.target.value)) setCantidad(e.target.value); }} 
-                          style={{ 
-                            width: 80, 
-                            padding: '0.6rem', 
-                            borderRadius: 6, 
-                            border: '1px solid #cbd5e1', 
-                            fontSize: '1rem',
-                            textAlign: 'center'
-                          }} 
-                        />
+                    {/* Mensaje de sin stock */}
+                    {productoSeleccionado && productoSeleccionado.stock !== undefined && productoSeleccionado.stock !== '' && !isNaN(Number(productoSeleccionado.stock)) && Number(productoSeleccionado.stock) === 0 && (
+                      <div style={{ 
+                        color: '#dc2626', 
+                        fontWeight: 600, 
+                        fontSize: isMobile ? '14px' : '14px',
+                        marginTop: isMobile ? 8 : 8,
+                        textAlign: 'center',
+                        padding: '0.5rem',
+                        background: '#fef2f2',
+                        borderRadius: 6,
+                        border: '1px solid #fecaca',
+                        width: '100%'
+                      }}>
+                        🚫 Sin stock
                       </div>
-                      <button 
-                        onClick={agregarAlCarrito} 
-                        disabled={productoSeleccionado && productoSeleccionado.stock !== undefined && productoSeleccionado.stock !== '' && !isNaN(Number(productoSeleccionado.stock)) && Number(productoSeleccionado.stock) <= 0}
-                        style={{ 
-                          background: 'linear-gradient(135deg, #fbbf24, #f59e0b)', 
-                          color: '#1e293b', 
-                          border: 'none', 
-                          padding: '0.8rem 1.5rem', 
-                          borderRadius: 10, 
-                          fontWeight: 700, 
-                          fontSize: '1rem', 
-                          cursor: (productoSeleccionado && productoSeleccionado.stock !== undefined && productoSeleccionado.stock !== '' && !isNaN(Number(productoSeleccionado.stock)) && Number(productoSeleccionado.stock) <= 0) ? 'not-allowed' : 'pointer',
-                          minWidth: 120
-                        }}
-                      >
-                        ➕ Agregar
-                      </button>
-                    </div>
-                    
-                    {productoSeleccionado && productoSeleccionado.stock !== undefined && productoSeleccionado.stock !== '' && !isNaN(Number(productoSeleccionado.stock)) && Number(productoSeleccionado.stock) <= 0 && (
-                      <div style={{ color: '#dc2626', fontWeight: 600, fontSize: 14 }}>🚫 Sin stock</div>
                     )}
                   </div>
                 )}
@@ -3685,10 +4312,10 @@ window.open(urlWhatsApp, '_blank');
                     <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 12 }}>
                       <thead>
                         <tr style={{ background: '#f8fafc' }}>
-                          <th style={{ textAlign: 'left', padding: 8 }}>Producto</th>
-                          <th style={{ textAlign: 'left', padding: 8 }}>Categoría</th>
+                          <th style={{ textAlign: 'left', padding: 8 }}>Nombre</th>
+                          { !isMobile ?? <th style={{ textAlign: 'left', padding: 8 }}>Categoría</th>}
                           <th style={{ textAlign: 'right', padding: 8 }}>Precio</th>
-                          <th style={{ textAlign: 'right', padding: 8 }}>Cantidad</th>
+                          <th style={{ textAlign: 'right', padding: 8 }}>Cant.</th>
                           <th style={{ textAlign: 'right', padding: 8 }}>Subtotal</th>
                           <th></th>
                         </tr>
@@ -3699,87 +4326,18 @@ window.open(urlWhatsApp, '_blank');
                           return (
                             <tr key={p.id}>
                               <td style={{ padding: 8 }}>{p.nombre}</td>
-                              <td style={{ padding: 8 }}>{p.categoria}</td>
+                              { !isMobile ?? <td style={{ padding: 8 }}>{p.categoria}</td>}
                               <td style={{ padding: 8, textAlign: 'right' }}>{formatearPrecio(precio)}</td>
                               <td style={{ padding: 8, textAlign: 'right' }}>{p.cantidad}</td>
                               <td style={{ padding: 8, textAlign: 'right' }}>{formatearPrecio(precio * p.cantidad)}</td>
-                              <td style={{ padding: 8 }}><button onClick={() => quitarDelCarrito(p.id)} style={{ background: '#ef4444', color: '#fff', border: 'none', borderRadius: 6, padding: '0.3rem 0.7rem', fontWeight: 700, cursor: 'pointer' }}>Quitar</button></td>
+                              <td style={{ padding: 8 }}><button onClick={() => quitarDelCarrito(p.id)} style={{ background: '#f1948a', color: '#fff', border: 'none', borderRadius: 6, padding: '0.3rem 0.7rem', fontWeight: 700, cursor: 'pointer' }}>🗑️</button></td>
                             </tr>
                           );
                         })}
                       </tbody>
                     </table>
                   )}
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 12 }}>
-                    {/* Botones para generar presupuesto */}
-                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                      {/* Botón cuadrado para generar PDF */}
-                      <button
-                        onClick={generarPresupuesto}
-                        disabled={carrito.length === 0 || generandoPresupuesto}
-                        style={{
-                          width: 130,
-                          height: 45,
-                          background: (carrito.length === 0 || generandoPresupuesto) 
-                            ?  '#7BC7EE'
-                            : 'linear-gradient(135deg, #0ea5e9, #3b82f6)',
-                          color: generandoPresupuesto ? '#64748b' : '#fff',
-                          border: 'none',
-                          borderRadius: 10,
-                          fontSize: '1rem',
-                          fontWeight: 800,
-                          cursor: carrito.length === 0 || generandoPresupuesto ? 'not-allowed' : 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          boxShadow: generandoPresupuesto 
-                            ? '0 2px 8px rgba(156,163,175,0.10)' 
-                            : '0 2px 8px rgba(14,165,233,0.20)',
-                          transition: 'all 0.3s ease'
-                        }}
-                        title="Generar PDF"
-                      >
-                      📄 Generar PDF
-                      </button>
-                      
-                      {/* Botón cuadrado de WhatsApp */}
-                      <button
-                        disabled={carrito.length === 0 || generandoPresupuesto}
-                        onClick={generarPresupuestoYWhatsApp}
-                        style={{ 
-                          width: 130,
-                          height: 45,
-                          background: (carrito.length === 0 || generandoPresupuesto) 
-                            ? '#67C78A' 
-                            : 'linear-gradient(135deg, #25D366, #128C7E)', 
-                          color: '#fff', 
-                          border: 'none', 
-                          borderRadius: 10, 
-                          fontSize: '1rem',
-                          fontWeight: 800,
-                          cursor: carrito.length === 0 || generandoPresupuesto ? 'not-allowed' : 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          boxShadow: (carrito.length === 0 || generandoPresupuesto) 
-                            ? '0 2px 8px rgba(156,163,175,0.10)' 
-                            : '0 2px 8px rgba(37,211,102,0.20)',
-                          transition: 'all 0.3s ease'
-                        }}
-                        title="Enviar por WhatsApp"
-                      >
-                        <img 
-                          src={whatsappLogo} 
-                          alt="WhatsApp" 
-                          style={{ 
-                            width: '20px', 
-                            height: '20px',
-                            verticalAlign: 'middle',
-                            marginLeft: '10px'
-                          }} 
-                        /> Enviar por WhatsApp
-                      </button>
-                    </div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', marginTop: 12 }}>
                     <div style={{ fontWeight: 800, fontSize: 23, color: '#059669' }}>Total: {formatearPrecio(totalVenta)}</div>
                   </div>
                 </div>
@@ -3789,15 +4347,15 @@ window.open(urlWhatsApp, '_blank');
                   <div style={{ display: 'flex', gap: 16 }}>
                     <div>
                       <label style={{ fontWeight: 600, color: '#64748b', marginRight: 8, cursor: 'pointer' }} onMouseDown={() => handlePagoClick('efectivo')}>💵 Efectivo</label>
-                      <input type="text" min={0} value={formaPago.efectivo} onChange={e => { if (/^\d*$/.test(e.target.value)) setFormaPago({ ...formaPago, efectivo: e.target.value }); }} style={{ width: 100, padding: '0.5rem', borderRadius: 6, border: '1px solid #cbd5e1', fontSize: '1rem' }} />
+                      <input type="text" min={0} value={formaPago.efectivo} onChange={e => { if (/^\d*$/.test(e.target.value)) setFormaPago({ ...formaPago, efectivo: e.target.value }); }} style={{ width: 'auto', padding: '0.5rem', borderRadius: 6, border: '1px solid #cbd5e1', fontSize: '1rem' }} />
                     </div>
                     <div>
                       <label style={{ fontWeight: 600, color: '#64748b', marginRight: 8, cursor: 'pointer' }} onMouseDown={() => handlePagoClick('transferencia')}>🏦 Transferencia</label>
-                      <input type="text" min={0} value={formaPago.transferencia} onChange={e => { if (/^\d*$/.test(e.target.value)) setFormaPago({ ...formaPago, transferencia: e.target.value }); }} style={{ width: 100, padding: '0.5rem', borderRadius: 6, border: '1px solid #cbd5e1', fontSize: '1rem' }} />
+                      <input type="text" min={0} value={formaPago.transferencia} onChange={e => { if (/^\d*$/.test(e.target.value)) setFormaPago({ ...formaPago, transferencia: e.target.value }); }} style={{ width: 'auto', padding: '0.5rem', borderRadius: 6, border: '1px solid #cbd5e1', fontSize: '1rem' }} />
                     </div>
                     <div>
                       <label style={{ fontWeight: 600, color: '#64748b', marginRight: 8, cursor: 'pointer' }} onMouseDown={() => handlePagoClick('pos')}>💳 POS</label>
-                      <input type="text" min={0} value={formaPago.pos} onChange={e => { if (/^\d*$/.test(e.target.value)) setFormaPago({ ...formaPago, pos: e.target.value }); }} style={{ width: 100, padding: '0.5rem', borderRadius: 6, border: '1px solid #cbd5e1', fontSize: '1rem' }} />
+                      <input type="text" min={0} value={formaPago.pos} onChange={e => { if (/^\d*$/.test(e.target.value)) setFormaPago({ ...formaPago, pos: e.target.value }); }} style={{ width: 'auto', padding: '0.5rem', borderRadius: 6, border: '1px solid #cbd5e1', fontSize: '1rem' }} />
                     </div>
                   </div>
                   <div style={{ color: '#64748b', marginTop: 8, fontSize: 13 }}>El total de las formas de pago debe coincidir con el total de la venta.</div>
@@ -3819,17 +4377,7 @@ window.open(urlWhatsApp, '_blank');
                     )}
                   </div>
                 </div>
-                {/* Cliente y observaciones */}
-                <div style={{ marginBottom: 24, display: 'flex', gap: 16 }}>
-                  <div style={{ flex: 1 }}>
-                    <label style={{ fontWeight: 600, color: '#64748b', marginRight: 8 }}>👤 Cliente</label>
-                    <input type="text" value={cliente} onChange={e => setCliente(e.target.value)} placeholder="Nombre del cliente (opcional)" style={{ width: '100%', padding: '0.7rem', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: '1rem' }} />
-                  </div>
-                  <div style={{ flex: 2 }}>
-                    <label style={{ fontWeight: 600, color: '#64748b', marginRight: 8 }}>📝 Observaciones</label>
-                    <input type="text" value={observaciones} onChange={e => setObservaciones(e.target.value)} placeholder="Observaciones (opcional)" style={{ width: '100%', padding: '0.7rem', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: '1rem' }} />
-                  </div>
-                </div>
+
                 {/* Botón para generar venta */}
                 {errorPago && <div style={{ color: '#dc2626', fontWeight: 600, marginBottom: 8 }}>{errorPago}</div>}
                 <button
@@ -4194,137 +4742,7 @@ window.open(urlWhatsApp, '_blank');
         </div>
       )}
 
-      {/* Modal de WhatsApp */}
-      {mostrarModalWhatsApp && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          background: 'rgba(0,0,0,0.5)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 1001
-        }}>
-          <div style={{
-            background: 'white',
-            borderRadius: 16,
-            padding: '2rem',
-            maxWidth: 500,
-            width: '90%',
-            boxShadow: '0 8px 32px rgba(0,0,0,0.2)'
-          }}>
-            <div style={{ textAlign: 'center', marginBottom: 24 }}>
-              <div style={{ 
-                fontSize: '3rem', 
-                marginBottom: 16,
-                background: 'linear-gradient(135deg, #25D366, #128C7E)',
-                width: 80,
-                height: 80,
-                borderRadius: '50%',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                margin: '0 auto 16px',
-                color: 'white'
-              }}>
-                📱
-              </div>
-              <h3 style={{ color: '#1e293b', fontWeight: 800, fontSize: '1.5rem', marginBottom: 8 }}>
-                Enviar por WhatsApp
-              </h3>
-              <p style={{ color: '#64748b', fontSize: '1rem' }}>
-                Ingresa el número de WhatsApp para enviar el presupuesto
-              </p>
-            </div>
 
-            <div style={{ marginBottom: 24 }}>
-              <label style={{ fontWeight: 600, color: '#64748b', marginBottom: 8, display: 'block' }}>
-                📞 Número de WhatsApp:
-              </label>
-              <input
-                type="tel"
-                value={numeroWhatsApp}
-                onChange={e => setNumeroWhatsApp(e.target.value)}
-                placeholder="Ej: 11 1234 5678 (sin código de país)"
-                style={{
-                  width: '100%',
-                  padding: '0.8rem',
-                  borderRadius: 8,
-                  border: '1px solid #cbd5e1',
-                  fontSize: '1rem',
-                  background: 'white'
-                }}
-                onKeyPress={e => e.key === 'Enter' && enviarWhatsApp()}
-                autoFocus
-              />
-              <div style={{ fontSize: '0.9rem', color: '#64748b', marginTop: 8 }}>
-                💡 El código de país (+54) se agregará automáticamente
-              </div>
-            </div>
-
-            {presupuestoGenerado && (
-              <div style={{ 
-                background: '#f0f9ff', 
-                padding: '1rem', 
-                borderRadius: 12, 
-                marginBottom: 24,
-                border: '1px solid #bae6fd'
-              }}>
-                <div style={{ fontWeight: 600, color: '#0c4a6e', marginBottom: 8 }}>📋 Resumen del presupuesto:</div>
-                <div style={{ fontSize: '0.9rem', color: '#0c4a6e' }}>
-                  <div>💰 Total: ${presupuestoGenerado.total.toLocaleString('es-AR')}</div>
-                </div>
-              </div>
-            )}
-
-            <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
-              <button
-                onClick={() => {
-                  setMostrarModalWhatsApp(false);
-                  setNumeroWhatsApp('');
-                  setPresupuestoGenerado(null);
-                }}
-                style={{
-                  background: '#f1f5f9',
-                  color: '#64748b',
-                  border: 'none',
-                  padding: '0.8rem 1.5rem',
-                  borderRadius: 10,
-                  fontWeight: 700,
-                  fontSize: '1rem',
-                  cursor: 'pointer'
-                }}
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={enviarWhatsApp}
-                disabled={!numeroWhatsApp.trim()}
-                style={{
-                  background: !numeroWhatsApp.trim() 
-                    ? '#9ca3af' 
-                    : 'linear-gradient(135deg, #25D366, #128C7E)',
-                  color: 'white',
-                  border: 'none',
-                  padding: '0.8rem 1.5rem',
-                  borderRadius: 10,
-                  fontWeight: 700,
-                  fontSize: '1rem',
-                  cursor: !numeroWhatsApp.trim() ? 'not-allowed' : 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 8
-                }}
-              >
-                📱 Enviar WhatsApp
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       <style>{`
         @keyframes slideIn {

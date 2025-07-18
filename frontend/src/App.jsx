@@ -316,7 +316,7 @@ function App() {
       </div>
       )}
       <header className="header">
-        <h1><img src={logo} alt="AlNorteGrow" className="logo-header" />ALNORTEGROW</h1>
+        <h1><img src={logo} alt="ALNORTEGROW" className="logo-header" />ALNORTEGROW</h1>
       </header>
 
       <main className="main">
@@ -562,8 +562,8 @@ function App() {
       </div>
       </main>
       <footer className="footer-app">
-        <a href="https://www.alnortegrow.com.ar" target="_blank" rel="noopener noreferrer">
-          <img src={logo} alt="AlNorteGrow" className="logo-footer" /> www.alnortegrow.com.ar
+        <a href="https://instagram.com/alnortegrow" target="_blank" rel="noopener noreferrer">
+          <img src={logo} alt="ALNORTEGROW" className="logo-footer" /> ALNORTEGROW
         </a>
       </footer>
       <a href={`https://www.whatsapp.com/catalog/${import.meta.env.VITE_TELEFONO}/`} className="whatsapp-float" target="_blank" rel="noopener noreferrer" title="Ver catálogo en WhatsApp">
