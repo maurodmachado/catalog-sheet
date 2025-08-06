@@ -21,6 +21,9 @@ services:
       - path: /static/*
         name: Cache-Control
         value: public, max-age=31536000
+    envVars:
+      - key: NODE_ENV
+        value: production
 
   - type: web
     name: catalog-sheet-backend
