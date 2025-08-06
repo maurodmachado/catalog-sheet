@@ -54,26 +54,37 @@ const allowedOrigins = [
   'http://localhost:3000', // Desarrollo local
   'https://alnortegrow-catalog.vercel.app', // Vercel
   'https://catalog-sheet-frontend.onrender.com', // Render frontend
+  'https://catalog-sheet.onrender.com', // Render alternativo
   process.env.FRONTEND_URL // Variable de entorno personalizada
 ].filter(Boolean);
 
 app.use(cors({
   origin: function (origin, callback) {
+    // Permitir requests sin origin (como Postman, curl, etc.)
     if (!origin) return callback(null, true);
+    
+    // Log para debugging
+    console.log('CORS Origin:', origin);
+    console.log('Allowed Origins:', allowedOrigins);
     
     if (allowedOrigins.indexOf(origin) !== -1) {
       callback(null, true);
     } else {
+      console.log('CORS blocked for origin:', origin);
       callback(new Error('No permitido por CORS'));
     }
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  optionsSuccessStatus: 200 // Para compatibilidad con navegadores antiguos
 }));
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// Middleware para manejar preflight requests
+app.options('*', cors());
 
 // Endpoint de ping para mantener viva la app
 app.get('/ping', (req, res) => {
