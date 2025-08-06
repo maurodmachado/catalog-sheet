@@ -304,12 +304,16 @@ export default function Admin() {
       }
     }
     
-    // Pre-llenar el campo empleado con el nombre del usuario logueado
+    // Lógica diferenciada para empleado según rol
     const adminUsuario = localStorage.getItem('adminUsuario');
-    if (adminUsuario) {
+    if (userRol === 'Empleado' && adminUsuario) {
+      // Si es empleado, solo puede usar su propio nombre
       setEmpleadoCaja(adminUsuario);
+    } else if (userRol === 'Administrador') {
+      // Si es admin, puede seleccionar cualquier empleado
+      setEmpleadoCaja('');
     }
-  }, [logueado]);
+  }, [logueado, userRol]);
 
   // --- Manejar clic fuera del dropdown de búsqueda ---
   useEffect(() => {
@@ -546,9 +550,13 @@ export default function Admin() {
         setCaja(data.caja);
         if (data.caja && data.caja.abierta && data.caja.empleado) {
           setEmpleadoCaja(data.caja.empleado);
+        } else {
+          // Si no hay caja abierta, limpiar el campo empleado
+          setEmpleadoCaja('');
         }
       } else {
         setCaja(null);
+        setEmpleadoCaja('');
       }
     } catch (err) {
       console.error('Error al cargar caja:', err);
@@ -593,16 +601,33 @@ export default function Admin() {
 
   // --- Abrir caja ---
   const handleAbrirCaja = async () => {
-    if (!empleadoCaja) { setErrorCaja('Ingrese el nombre del empleado'); return; }
+    // Para empleados, no validar el campo empleado ya que está pre-llenado
+    if (userRol === 'Administrador' && !empleadoCaja) { 
+      setErrorCaja('Seleccione un empleado'); 
+      return; 
+    }
     if (!turno) { setErrorCaja('Seleccione el turno'); return; }
     if (!montoApertura || isNaN(Number(montoApertura))) { setErrorCaja('Ingrese un monto de apertura válido'); return; }
     setLoadingCaja(true); setErrorCaja(''); setMensajeCaja('');
     try {
       const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3001') + '/api';
+      
+      // Para empleados, usar el nombre del usuario logueado si empleadoCaja está vacío
+      let empleadoParaEnviar = empleadoCaja;
+      if (userRol === 'Empleado' && !empleadoCaja) {
+        empleadoParaEnviar = localStorage.getItem('adminUsuario') || '';
+      }
+      
+      const requestBody = { turno, empleado: empleadoParaEnviar, montoApertura };
+      console.log('Enviando datos:', requestBody);
+      console.log('userRol:', userRol);
+      console.log('empleadoCaja:', empleadoCaja);
+      console.log('empleadoParaEnviar:', empleadoParaEnviar);
+      
       const res = await fetchWithAuth(`${API_URL}/caja/abrir`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ turno, empleado: empleadoCaja, montoApertura })
+        body: JSON.stringify(requestBody)
       });
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({}));
@@ -1115,8 +1140,8 @@ export default function Admin() {
     
     // Ordenar cajas
     cajasFiltradas.sort((a, b) => {
-      const totalA = (a.efectivo || 0) + (a.transferencia || 0) + (a.pos || 0);
-      const totalB = (b.efectivo || 0) + (b.transferencia || 0) + (b.pos || 0);
+      const totalA = Number(a.efectivo || 0) + Number(a.transferencia || 0) + Number(a.pos || 0);
+      const totalB = Number(b.efectivo || 0) + Number(b.transferencia || 0) + Number(b.pos || 0);
       
       switch (ordenCajas) {
         case 'fecha_asc':
@@ -1216,8 +1241,8 @@ export default function Admin() {
     if (!cajas || cajas.length === 0) return null;
     
     return cajas.reduce((cajaMayor, cajaActual) => {
-      const totalActual = (cajaActual.efectivo || 0) + (cajaActual.transferencia || 0) + (cajaActual.pos || 0);
-      const totalMayor = (cajaMayor.efectivo || 0) + (cajaMayor.transferencia || 0) + (cajaMayor.pos || 0);
+      const totalActual = Number(cajaActual.efectivo || 0) + Number(cajaActual.transferencia || 0) + Number(cajaActual.pos || 0);
+      const totalMayor = Number(cajaMayor.efectivo || 0) + Number(cajaMayor.transferencia || 0) + Number(cajaMayor.pos || 0);
       
       return totalActual > totalMayor ? cajaActual : cajaMayor;
     });
@@ -1886,15 +1911,15 @@ export default function Admin() {
               {/* Resumen de caja */}
               <div className="admin-caja-resumen">
                 <div style={{ fontWeight: 700, color: '#64748b', marginBottom: 4 }}>Monto inicial caja:</div>
-                <div style={{ fontWeight: 800, color: '#1e293b', fontSize: 18, marginBottom: 10 }}>$ {caja && caja.montoApertura ? caja.montoApertura : '0'}</div>
+                <div style={{ fontWeight: 800, color: '#1e293b', fontSize: 18, marginBottom: 10 }}>$ {caja && caja.montoApertura ? Number(caja.montoApertura) || 0 : 0}</div>
                 <div style={{ fontWeight: 700, color: '#64748b', marginBottom: 4 }}>Total Efectivo ganado:</div>
-                <div style={{ fontWeight: 800, color: '#059669', fontSize: 18, marginBottom: 8 }}>$ {caja && caja.totales ? caja.totales.efectivo : 0}</div>
+                <div style={{ fontWeight: 800, color: '#059669', fontSize: 18, marginBottom: 8 }}>$ {caja && caja.totales ? Number(caja.totales.efectivo) || 0 : 0}</div>
                 <div style={{ fontWeight: 700, color: '#64748b', marginBottom: 4 }}>Total Transferencia ganado:</div>
-                <div style={{ fontWeight: 800, color: '#0ea5e9', fontSize: 18, marginBottom: 8 }}>$ {caja && caja.totales ? caja.totales.transferencia : 0}</div>
+                <div style={{ fontWeight: 800, color: '#0ea5e9', fontSize: 18, marginBottom: 8 }}>$ {caja && caja.totales ? Number(caja.totales.transferencia) || 0 : 0}</div>
                 <div style={{ fontWeight: 700, color: '#64748b', marginBottom: 4 }}>Total POS ganado:</div>
-                <div style={{ fontWeight: 800, color: '#f59e0b', fontSize: 18, marginBottom: 8 }}>$ {caja && caja.totales ? caja.totales.pos : 0}</div>
+                <div style={{ fontWeight: 800, color: '#f59e0b', fontSize: 18, marginBottom: 8 }}>$ {caja && caja.totales ? Number(caja.totales.pos) || 0 : 0}</div>
                 <div style={{ fontWeight: 700, color: '#64748b', marginBottom: 4 }}>Total vendido:</div>
-                <div style={{ fontWeight: 800, color: '#1e293b', fontSize: 18 }}>$ {caja && caja.totalVendido ? caja.totalVendido : 0}</div>
+                <div style={{ fontWeight: 800, color: '#1e293b', fontSize: 18 }}>$ {caja && caja.totalVendido ? Number(caja.totalVendido) || 0 : 0}</div>
               </div>
               {/* Estado de caja y controles */}
               {loadingCaja ? <div className="admin-caja-loading">Cargando estado de caja...</div> : (
@@ -1923,9 +1948,24 @@ export default function Admin() {
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 220 }}>
                           <span style={{ fontWeight: 700, fontSize: '1rem', width: 120, textAlign: 'left' }}>👤 Empleado</span>
-                          <select value={empleadoCaja} onChange={e => setEmpleadoCaja(e.target.value)} style={{ padding: '0.7rem 1rem', borderRadius: 8, border: '1px solid #cbd5e1', fontWeight: 700, fontSize: '1rem', width: 145, height: '2.8rem', textAlign: 'center' }}>
-                            <option value="">Seleccionar</option>
-                            {empleados.map(emp => <option key={emp.id || emp} value={emp.nombre || emp}>{emp.nombre || emp}</option>)}
+                          <select 
+                            value={empleadoCaja} 
+                            onChange={e => setEmpleadoCaja(e.target.value)} 
+                            style={{ padding: '0.7rem 1rem', borderRadius: 8, border: '1px solid #cbd5e1', fontWeight: 700, fontSize: '1rem', width: 145, height: '2.8rem', textAlign: 'center' }}
+                            disabled={userRol === 'Empleado'}
+                          >
+                            {userRol === 'Empleado' ? (
+                              // Para empleados, mostrar solo su nombre
+                              <option value={localStorage.getItem('adminUsuario') || ''}>
+                                {localStorage.getItem('adminUsuario') || 'Empleado'}
+                              </option>
+                            ) : (
+                              // Para administradores, mostrar todos los empleados
+                              <>
+                                <option value="">Seleccionar</option>
+                                {empleados.map(emp => <option key={emp.id || emp} value={emp.nombre || emp}>{emp.nombre || emp}</option>)}
+                              </>
+                            )}
                           </select>
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 220 }}>
@@ -2688,7 +2728,7 @@ export default function Admin() {
                         </div>
                         <div style={{ textAlign: 'right' }}>
                           <div style={{ fontWeight: 800, fontSize: 20, color: '#059669', marginBottom: 4 }}>
-                            ${((caja.efectivo || 0) + (caja.transferencia || 0) + (caja.pos || 0)).toFixed(2)}
+                            ${(Number(caja.efectivo || 0) + Number(caja.transferencia || 0) + Number(caja.pos || 0)).toFixed(2)}
                           </div>
                           <div style={{ fontSize: 12, color: '#64748b' }}>
                             {caja.cantidadVentas || 0} venta{(caja.cantidadVentas || 0) !== 1 ? 's' : ''}
@@ -2710,7 +2750,7 @@ export default function Admin() {
                           </div>
                           <div>
                             <span style={{ fontWeight: 600, color: '#64748b' }}>Total vendido:</span>
-                            <span style={{ marginLeft: 8, fontWeight: 700 }}>${((caja.efectivo || 0) + (caja.transferencia || 0) + (caja.pos || 0)).toFixed(2)}</span>
+                            <span style={{ marginLeft: 8, fontWeight: 700 }}>${(Number(caja.efectivo || 0) + Number(caja.transferencia || 0) + Number(caja.pos || 0)).toFixed(2)}</span>
                           </div>
                           <div>
                             <span style={{ fontWeight: 600, color: '#64748b' }}>Productos vendidos:</span>
@@ -2821,16 +2861,30 @@ export default function Admin() {
                   <div key={usuario.id} style={{ padding: '1rem 1.5rem', borderBottom: index < usuarios.length - 1 ? '1px solid #e2e8f0' : 'none', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
                     {editandoUsuario && editandoUsuario.id === usuario.id ? (
                       // Modo edición
-                      <div style={{ display: 'flex', gap: 12, alignItems: 'center', flex: 1, flexWrap: 'wrap' }}>
-                        <input type="text" value={usuarioEditando.nombre} onChange={e => setUsuarioEditando({ ...usuarioEditando, nombre: e.target.value })} style={{ flex: 1, minWidth: 120, padding: '0.7rem', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: '1rem', background: 'white' }} />
-                        <input type="text" value={usuarioEditando.usuario} onChange={e => setUsuarioEditando({ ...usuarioEditando, usuario: e.target.value })} style={{ flex: 1, minWidth: 120, padding: '0.7rem', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: '1rem', background: 'white' }} />
-                        <input type="password" value={usuarioEditando.password} onChange={e => setUsuarioEditando({ ...usuarioEditando, password: e.target.value })} placeholder="Nueva contraseña (opcional)" style={{ flex: 1, minWidth: 120, padding: '0.7rem', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: '1rem', background: 'white' }} />
-                        <select value={usuarioEditando.rol} onChange={e => setUsuarioEditando({ ...usuarioEditando, rol: e.target.value })} style={{ flex: 1, minWidth: 120, padding: '0.7rem', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: '1rem', background: 'white' }}>
-                          <option value="Empleado">Empleado</option>
-                          <option value="Administrador">Administrador</option>
-                        </select>
-                        <button onClick={editarUsuario} style={{ background: 'linear-gradient(135deg, #059669, #10b981)', color: '#fff', border: 'none', padding: '0.5rem 1rem', borderRadius: 6, fontWeight: 600, fontSize: '0.9rem', cursor: 'pointer' }}>✅ Guardar</button>
-                        <button onClick={cancelarEdicionUsuario} style={{ background: '#f1f5f9', color: '#64748b', border: 'none', padding: '0.5rem 1rem', borderRadius: 6, fontWeight: 600, fontSize: '0.9rem', cursor: 'pointer' }}>❌ Cancelar</button>
+                      <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flex: 1, flexWrap: 'wrap' }}>
+                        <div style={{ flex: 1, minWidth: 120 }}>
+                          <label style={{ display: 'block', fontWeight: 600, color: '#64748b', marginBottom: 6, fontSize: '0.9rem' }}>Nombre</label>
+                          <input type="text" value={usuarioEditando.nombre} onChange={e => setUsuarioEditando({ ...usuarioEditando, nombre: e.target.value })} style={{ width: '100%', padding: '0.7rem', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: '1rem', background: 'white' }} />
+                        </div>
+                        <div style={{ flex: 1, minWidth: 120 }}>
+                          <label style={{ display: 'block', fontWeight: 600, color: '#64748b', marginBottom: 6, fontSize: '0.9rem' }}>Usuario</label>
+                          <input type="text" value={usuarioEditando.usuario} onChange={e => setUsuarioEditando({ ...usuarioEditando, usuario: e.target.value })} style={{ width: '100%', padding: '0.7rem', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: '1rem', background: 'white' }} />
+                        </div>
+                        <div style={{ flex: 1, minWidth: 120 }}>
+                          <label style={{ display: 'block', fontWeight: 600, color: '#64748b', marginBottom: 6, fontSize: '0.9rem' }}>Contraseña</label>
+                          <input type="password" value={usuarioEditando.password} onChange={e => setUsuarioEditando({ ...usuarioEditando, password: e.target.value })} placeholder="Nueva contraseña (opcional)" style={{ width: '100%', padding: '0.7rem', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: '1rem', background: 'white' }} />
+                        </div>
+                        <div style={{ flex: 1, minWidth: 120 }}>
+                          <label style={{ display: 'block', fontWeight: 600, color: '#64748b', marginBottom: 6, fontSize: '0.9rem' }}>Rol</label>
+                          <select value={usuarioEditando.rol} onChange={e => setUsuarioEditando({ ...usuarioEditando, rol: e.target.value })} style={{ width: '100%', padding: '0.7rem', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: '1rem', background: 'white' }}>
+                            <option value="Empleado">Empleado</option>
+                            <option value="Administrador">Administrador</option>
+                          </select>
+                        </div>
+                        <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+                          <button onClick={editarUsuario} style={{ background: 'linear-gradient(135deg, #059669, #10b981)', color: '#fff', border: 'none', padding: '0.5rem 1rem', borderRadius: 6, fontWeight: 600, fontSize: '0.9rem', cursor: 'pointer' }}>✅ Guardar</button>
+                          <button onClick={cancelarEdicionUsuario} style={{ background: '#f1f5f9', color: '#64748b', border: 'none', padding: '0.5rem 1rem', borderRadius: 6, fontWeight: 600, fontSize: '0.9rem', cursor: 'pointer' }}>❌ Cancelar</button>
+                        </div>
                       </div>
                     ) : (
                       // Modo visualización
@@ -3254,7 +3308,7 @@ export default function Admin() {
                           <div>
                             <div style={{ fontSize: 14, opacity: 0.8, marginBottom: 8 }}>💰 Total Vendido</div>
                             <div style={{ fontSize: 32, fontWeight: 800, marginBottom: 16 }}>
-                              {formatearPrecio((obtenerCajaConMayorVenta().efectivo || 0) + (obtenerCajaConMayorVenta().transferencia || 0) + (obtenerCajaConMayorVenta().pos || 0))}
+                              {formatearPrecio(Number(obtenerCajaConMayorVenta().efectivo || 0) + Number(obtenerCajaConMayorVenta().transferencia || 0) + Number(obtenerCajaConMayorVenta().pos || 0))}
                             </div>
                             <div style={{ fontSize: 14, opacity: 0.8 }}>
                               {obtenerCajaConMayorVenta().cantidadVentas || 0} ventas • {obtenerCajaConMayorVenta().cantidadProductos || 0} productos

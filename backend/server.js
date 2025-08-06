@@ -18,6 +18,7 @@ const fs = require('fs');
 const path = require('path');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
+const { v4: uuidv4 } = require('uuid');
 
 const app = express();
 app.set('trust proxy', 1); // Confiar en el primer proxy (Render, Vercel, etc)
@@ -78,6 +79,8 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.get('/ping', (req, res) => {
   res.json({ ok: true, message: 'pong' });
 });
+
+
 
 // Soporte para Render: escribir credentials.json desde variable de entorno
 if (process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON) {
@@ -164,25 +167,86 @@ function requireAuth(req, res, next) {
 }
 
 // --- AUTENTICACIÓN: endpoint para validar credenciales ---
-app.post('/api/auth/login', (req, res) => {
+app.post('/api/auth/login', async (req, res) => {
   try {
     const { usuario, password } = req.body;
     const ADMIN_USER = process.env.ADMIN_USER || 'admin';
     const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin123';
+    
+    // Primero verificar si es el admin del .env
     if (usuario === ADMIN_USER && password === ADMIN_PASSWORD) {
       // Buscar token en cache
       const cached = tokenCache.get(usuario);
       if (cached && cached.exp > Date.now()) {
-        return res.json({ success: true, message: 'Autenticación exitosa', usuario: ADMIN_USER, token: cached.token });
+        return res.json({ 
+          success: true, 
+          message: 'Autenticación exitosa', 
+          usuario: ADMIN_USER, 
+          rol: 'Administrador',
+          token: cached.token 
+        });
       }
       // Generar token nuevo
-      const token = jwt.sign({ usuario }, TOKEN_SECRET, { expiresIn: TOKEN_EXPIRATION });
+      const token = jwt.sign({ usuario, rol: 'Administrador' }, TOKEN_SECRET, { expiresIn: TOKEN_EXPIRATION });
       const exp = Date.now() + 24 * 60 * 60 * 1000;
       tokenCache.set(usuario, { token, exp });
-      return res.json({ success: true, message: 'Autenticación exitosa', usuario: ADMIN_USER, token });
-    } else {
-      res.status(401).json({ success: false, message: 'Usuario o contraseña incorrectos' });
+      return res.json({ 
+        success: true, 
+        message: 'Autenticación exitosa', 
+        usuario: ADMIN_USER, 
+        rol: 'Administrador',
+        token 
+      });
     }
+    
+    // Si no es el admin del .env, buscar en la base de datos de usuarios
+    try {
+      const response = await sheets.spreadsheets.values.get({
+        spreadsheetId: SPREADSHEET_ID,
+        range: USUARIOS_RANGE,
+      });
+      const rows = response.data.values;
+      if (rows && rows.length > 1) {
+        // Buscar el usuario en la base de datos
+        const userRow = rows.slice(1).find(row => row[1] === usuario);
+        if (userRow) {
+          const storedHash = userRow[2];
+          const rol = userRow[3] || 'Empleado';
+          
+          // Verificar contraseña con bcrypt
+          const isValidPassword = await bcrypt.compare(password, storedHash);
+          if (isValidPassword) {
+            // Buscar token en cache
+            const cached = tokenCache.get(usuario);
+            if (cached && cached.exp > Date.now()) {
+              return res.json({ 
+                success: true, 
+                message: 'Autenticación exitosa', 
+                usuario: usuario, 
+                rol: rol,
+                token: cached.token 
+              });
+            }
+            // Generar token nuevo
+            const token = jwt.sign({ usuario, rol }, TOKEN_SECRET, { expiresIn: TOKEN_EXPIRATION });
+            const exp = Date.now() + 24 * 60 * 60 * 1000;
+            tokenCache.set(usuario, { token, exp });
+            return res.json({ 
+              success: true, 
+              message: 'Autenticación exitosa', 
+              usuario: usuario, 
+              rol: rol,
+              token 
+            });
+          }
+        }
+      }
+    } catch (sheetsError) {
+      console.error('Error al buscar usuario en Sheets:', sheetsError);
+      // Si hay error con Sheets, continuar con el flujo normal
+    }
+    
+    res.status(401).json({ success: false, message: 'Usuario o contraseña incorrectos' });
   } catch (error) {
     console.error('Error en autenticación:', error);
     res.status(500).json({ success: false, message: 'Error interno del servidor' });
@@ -191,76 +255,186 @@ app.post('/api/auth/login', (req, res) => {
 
 // --- ENDPOINTS DE CAJA ---
 
-const CAJA_FILE = path.join(__dirname, 'caja.json');
+// Configuración para cajas en Google Sheets
+const CAJA_RANGE = 'Cajas!A:P'; // Hoja para cajas (16 columnas)
 
-// Cargar caja persistente al iniciar
-let cajaActual = null;
-
-try {
-  if (fs.existsSync(CAJA_FILE)) {
-    const cajaData = fs.readFileSync(CAJA_FILE, 'utf8');
-    cajaActual = JSON.parse(cajaData);
-  } else {
+// Función para obtener caja abierta desde Sheets
+async function obtenerCajaAbierta() {
+  try {
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId: SPREADSHEET_ID,
+      range: CAJA_RANGE,
+    });
+    const rows = response.data.values;
+    if (!rows || rows.length <= 1) return null;
+    
+    // Buscar la última caja con estado "Abierta"
+    for (let i = rows.length - 1; i > 0; i--) {
+      const row = rows[i];
+      if (row[5] === 'Abierta') { // Columna F: Estado
+        return {
+          id: row[0], // ID
+          fechaApertura: row[1], // Fecha Apertura
+          horaApertura: row[2], // Hora Apertura
+          fechaCierre: row[3], // Fecha Cierre
+          horaCierre: row[4], // Hora Cierre
+          estado: row[5], // Estado
+          turno: row[6], // Turno
+          empleado: row[7], // Empleado
+          montoApertura: Number(row[8]), // Monto Apertura
+          efectivo: Number(row[9]), // Efectivo
+          transferencia: Number(row[10]), // Transferencia
+          pos: Number(row[11]), // POS
+          cantidadVentas: Number(row[12]), // Cant. Ventas
+          cantidadProductos: Number(row[13]), // Cant. Productos
+          montoCierre: Number(row[14]), // Monto Cierre
+          totalVendido: Number(row[15]), // Total Vendido
+          fila: i + 1 // Número de fila en Sheets
+        };
+      }
+    }
+    return null;
+  } catch (error) {
+    console.error('Error al obtener caja abierta:', error);
+    return null;
   }
-} catch (e) {
-  console.error('❌ Error al cargar caja:', e.message);
-  cajaActual = null;
 }
 
-function guardarCaja() {
-  
-  if (cajaActual) {
-    fs.writeFileSync(CAJA_FILE, JSON.stringify(cajaActual, null, 2));
-  } else if (fs.existsSync(CAJA_FILE)) {
-    fs.unlinkSync(CAJA_FILE);
-  } else {
+// Función para actualizar caja en Sheets
+async function actualizarCajaEnSheets(caja) {
+  try {
+    const fila = [
+      caja.id,
+      caja.fechaApertura,
+      caja.horaApertura,
+      caja.fechaCierre,
+      caja.horaCierre,
+      caja.estado,
+      caja.turno,
+      caja.empleado,
+      caja.montoApertura,
+      caja.efectivo,
+      caja.transferencia,
+      caja.pos,
+      caja.cantidadVentas,
+      caja.cantidadProductos,
+      caja.montoCierre,
+      caja.totalVendido
+    ];
+    
+          await sheets.spreadsheets.values.update({
+        spreadsheetId: SPREADSHEET_ID,
+        range: `Cajas!A${caja.fila}:P${caja.fila}`,
+        valueInputOption: 'RAW',
+        requestBody: { values: [fila] }
+      });
+  } catch (error) {
+    console.error('Error al actualizar caja en Sheets:', error);
+    throw error;
   }
 }
+
+// Variable global para caja actual (en memoria) - Ya no se usa, todo se maneja desde Sheets
 
 // Abrir caja
 app.post('/api/caja/abrir', requireAuth, async (req, res) => {
   try {
     const { turno, empleado, montoApertura } = req.body;
+    
+    // Validaciones obligatorias
+    if (!empleado || empleado.trim() === '') {
+      return res.status(400).json({ error: 'Debe seleccionar un empleado' });
+    }
+    
+    if (!turno || turno.trim() === '') {
+      return res.status(400).json({ error: 'Debe seleccionar un turno' });
+    }
+    
+    if (!montoApertura || isNaN(Number(montoApertura)) || Number(montoApertura) <= 0) {
+      return res.status(400).json({ error: 'Debe ingresar un monto de apertura válido' });
+    }
+    
+    // Verificar si ya hay una caja abierta
+    const cajaExistente = await obtenerCajaAbierta();
+    if (cajaExistente) {
+      return res.status(400).json({ error: 'Ya hay una caja abierta' });
+    }
+    
     if (process.env.NODE_ENV === 'test') {
-      cajaActual = {
+      const cajaTest = {
+        id: uuidv4(),
         abierta: true,
         turno: turno || 'Mañana',
         empleado: empleado || 'Test',
-        fechaApertura: '',
-        fechaAperturaSeparada: '',
-        horaApertura: '',
+        fechaApertura: formatearFecha(),
+        horaApertura: formatearHora(),
         montoApertura: Number(montoApertura) || 1000,
-        ventas: [],
-        totales: { efectivo: 0, transferencia: 0, pos: 0 },
+        totales: {
+          efectivo: 0,
+          transferencia: 0,
+          pos: 0
+        },
         cantidadVentas: 0,
         cantidadProductos: 0,
-        totalVendido: 0
+        totalVendido: 0,
+        estado: 'Abierta'
       };
-      return res.json({ success: true, caja: cajaActual });
+      return res.json({ success: true, caja: cajaTest });
     }
-    if (cajaActual && cajaActual.abierta) {
-      return res.status(400).json({ error: 'Ya hay una caja abierta' });
-    }
-    const fechaApertura = new Date().toLocaleString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' });
-    const fechaAperturaSeparada = formatearFecha();
+    
+    const fechaApertura = formatearFecha();
     const horaApertura = formatearHora();
-    cajaActual = {
+    const montoAperturaReal = (montoApertura !== undefined && montoApertura !== null && montoApertura !== "") ? Number(montoApertura) : 30000;
+    
+    // Crear nueva fila en Sheets
+    const nuevaCaja = [
+      uuidv4(), // ID (UUID)
+      fechaApertura, // Fecha Apertura
+      horaApertura, // Hora Apertura
+      '', // Fecha Cierre
+      '', // Hora Cierre
+      'Abierta', // Estado
+      turno, // Turno
+      empleado, // Empleado
+      montoAperturaReal, // Monto Apertura
+      0, // Efectivo
+      0, // Transferencia
+      0, // POS
+      0, // Cant. Ventas
+      0, // Cant. Productos
+      0, // Monto Cierre
+      0 // Total Vendido
+    ];
+    
+    await sheets.spreadsheets.values.append({
+      spreadsheetId: SPREADSHEET_ID,
+      range: CAJA_RANGE,
+      valueInputOption: 'RAW',
+      requestBody: { values: [nuevaCaja] }
+    });
+    
+    const cajaCreada = {
+      id: nuevaCaja[0],
       abierta: true,
-      turno,
-      empleado,
-      fechaApertura,
-      fechaAperturaSeparada,
-      horaApertura,
-      montoApertura: (montoApertura !== undefined && montoApertura !== null && montoApertura !== "") ? Number(montoApertura) : 30000,
-      ventas: [],
-      totales: { efectivo: 0, transferencia: 0, pos: 0 },
-      cantidadVentas: 0,
-      cantidadProductos: 0,
-      totalVendido: 0
+      turno: nuevaCaja[6],
+      empleado: nuevaCaja[7],
+      fechaApertura: nuevaCaja[1],
+      horaApertura: nuevaCaja[2],
+      montoApertura: Number(nuevaCaja[8]),
+      totales: {
+        efectivo: Number(nuevaCaja[9]),
+        transferencia: Number(nuevaCaja[10]),
+        pos: Number(nuevaCaja[11])
+      },
+      cantidadVentas: Number(nuevaCaja[12]),
+      cantidadProductos: Number(nuevaCaja[13]),
+      totalVendido: Number(nuevaCaja[15]),
+      estado: nuevaCaja[5]
     };
-    guardarCaja();
-    res.json({ success: true, caja: cajaActual });
+    
+    res.json({ success: true, caja: cajaCreada });
   } catch (error) {
+    console.error('Error al abrir caja:', error);
     res.status(500).json({ error: 'Error al abrir caja' });
   }
 });
@@ -268,18 +442,36 @@ app.post('/api/caja/abrir', requireAuth, async (req, res) => {
 // Endpoint para consultar estado de caja
 app.get('/api/caja/estado', async (req, res) => {
   try {
-    // Recargar cajaActual desde archivo para máxima robustez
-    if (fs.existsSync(CAJA_FILE)) {
-      const cajaData = fs.readFileSync(CAJA_FILE, 'utf8');
-      cajaActual = JSON.parse(cajaData);
-    }
-    if (!cajaActual) {
+    // Obtener caja abierta desde Sheets
+    const caja = await obtenerCajaAbierta();
+    
+    if (!caja) {
       return res.json({ success: false, message: 'No hay caja abierta' });
     }
 
+    // Transformar la estructura para que coincida con lo que espera el frontend
+    const cajaFormateada = {
+      id: caja.id,
+      abierta: caja.estado === 'Abierta',
+      turno: caja.turno,
+      empleado: caja.empleado,
+      fechaApertura: caja.fechaApertura,
+      horaApertura: caja.horaApertura,
+      montoApertura: caja.montoApertura,
+      totales: {
+        efectivo: caja.efectivo,
+        transferencia: caja.transferencia,
+        pos: caja.pos
+      },
+      cantidadVentas: caja.cantidadVentas,
+      cantidadProductos: caja.cantidadProductos,
+      totalVendido: caja.totalVendido,
+      estado: caja.estado
+    };
+
     return res.json({ 
       success: true, 
-      caja: cajaActual 
+      caja: cajaFormateada 
     });
   } catch (error) {
     console.error('Error al consultar estado de caja:', error);
@@ -288,110 +480,78 @@ app.get('/api/caja/estado', async (req, res) => {
 });
 
 // Función para registrar venta en caja actual
-function registrarVentaEnCaja(venta) {
-  if (!cajaActual || !cajaActual.abierta) {
-    return { success: false, error: 'No hay caja abierta' };
+async function registrarVentaEnCaja(venta) {
+  try {
+    // Obtener caja abierta desde Sheets
+    const caja = await obtenerCajaAbierta();
+    if (!caja || caja.estado !== 'Abierta') {
+      return { success: false, error: 'No hay caja abierta' };
+    }
+
+    // Actualizar totales
+    caja.efectivo += Number(venta.efectivo) || 0;
+    caja.transferencia += Number(venta.transferencia) || 0;
+    caja.pos += Number(venta.pos) || 0;
+    caja.totalVendido = Number(caja.efectivo) + Number(caja.transferencia) + Number(caja.pos);
+    caja.cantidadVentas += 1;
+    caja.cantidadProductos += venta.productos ? venta.productos.length : 0;
+
+    // Actualizar en Sheets
+    await actualizarCajaEnSheets(caja);
+    
+    return { success: true };
+  } catch (error) {
+    console.error('Error al registrar venta en caja:', error);
+    return { success: false, error: 'Error al actualizar caja' };
   }
-
-  // Guardar totales anteriores para logging
-  const efectivoAnterior = cajaActual.totales.efectivo;
-  const transferenciaAnterior = cajaActual.totales.transferencia;
-  const posAnterior = cajaActual.totales.pos;
-
-  // Actualizar totales
-  cajaActual.totales.efectivo += venta.efectivo || 0;
-  cajaActual.totales.transferencia += venta.transferencia || 0;
-  cajaActual.totales.pos += venta.pos || 0;
-  cajaActual.totalVendido += venta.total || 0;
-  cajaActual.cantidadVentas += 1;
-  cajaActual.cantidadProductos += venta.productos ? venta.productos.length : 0;
-
-  // Agregar venta al historial
-  cajaActual.ventas.push({
-    ...venta,
-    fecha: new Date().toISOString(),
-    id: Date.now().toString()
-  });
-
-  // Guardar en archivo
-  guardarCaja();
-
-  return { success: true };
 }
 
 // Cerrar caja
 app.post('/api/caja/cerrar', requireAuth, async (req, res) => {
   try {
-    // Recargar cajaActual desde archivo antes de cerrar
-    if (fs.existsSync(CAJA_FILE)) {
-      const cajaData = fs.readFileSync(CAJA_FILE, 'utf8');
-      cajaActual = JSON.parse(cajaData);
-    }
-    if (!cajaActual || !cajaActual.abierta) {
+    // Obtener caja abierta desde Sheets
+    const caja = await obtenerCajaAbierta();
+    
+    if (!caja || caja.estado !== 'Abierta') {
       return res.status(400).json({ error: 'No hay caja abierta' });
     }
+    
     const { montoCierre } = req.body;
     const fechaCierre = formatearFecha();
     const horaCierre = formatearHora();
-    // Registrar en hoja Caja
-    const CAJA_RANGE = 'Caja!A:N';
-    // Usar montoApertura solo si montoCierre es undefined, null o string vacío
-    const montoCierreReal = (montoCierre === undefined || montoCierre === null || montoCierre === "") ? cajaActual.montoApertura : Number(montoCierre);
-    const fila = [
-      cajaActual.fechaAperturaSeparada,  // Fecha apertura
-      cajaActual.horaApertura,           // Hora apertura
-      fechaCierre,                       // Fecha cierre
-      horaCierre,                        // Hora cierre
-      cajaActual.turno,
-      cajaActual.empleado,
-      cajaActual.montoApertura,
-      cajaActual.totales.efectivo,
-      cajaActual.totales.transferencia,
-      cajaActual.totales.pos,
-      cajaActual.cantidadVentas,
-      cajaActual.cantidadProductos,
-      montoCierreReal
-    ];
-    // Escribir datos en la hoja Caja
-    await sheets.spreadsheets.values.append({
-      spreadsheetId: SPREADSHEET_ID,
-      range: CAJA_RANGE,
-      valueInputOption: 'USER_ENTERED',
-      requestBody: { values: [fila] }
-    });
     
-    cajaActual.abierta = false;
-    guardarCaja();
+    // Usar montoApertura solo si montoCierre es undefined, null o string vacío
+    const montoCierreReal = (montoCierre === undefined || montoCierre === null || montoCierre === "") ? caja.montoApertura : Number(montoCierre);
+    
+    // Actualizar caja con datos de cierre
+    caja.fechaCierre = fechaCierre;
+    caja.horaCierre = horaCierre;
+    caja.estado = 'Cerrada';
+    caja.montoCierre = montoCierreReal;
+    caja.totalVendido = Number(caja.efectivo) + Number(caja.transferencia) + Number(caja.pos);
+    
+    // Actualizar la fila en Sheets
+    await actualizarCajaEnSheets(caja);
+    
     res.json({ success: true });
-    cajaActual = null;
-    guardarCaja();
   } catch (error) {
+    console.error('Error al cerrar caja:', error);
     res.status(500).json({ error: 'Error al cerrar caja' });
   }
 });
 
 // --- MODIFICAR /api/ventas para bloquear si caja cerrada y registrar en caja ---
 app.post('/api/ventas', requireAuth, async (req, res) => {
-  // Permitir registrar ventas en modo test
-  if (process.env.NODE_ENV !== 'test' && (!cajaActual || !cajaActual.abierta)) {
-    return res.status(403).json({ error: 'No se puede registrar venta: la caja está cerrada' });
+  // Validar caja desde Sheets
+  if (process.env.NODE_ENV !== 'test') {
+    const caja = await obtenerCajaAbierta();
+    if (!caja || caja.estado !== 'Abierta') {
+      return res.status(403).json({ error: 'No se puede registrar venta: la caja está cerrada' });
+    }
   }
-  // En modo test, si cajaActual es null, crear una caja ficticia
-  if (process.env.NODE_ENV === 'test' && !cajaActual) {
-    cajaActual = {
-      abierta: true,
-      empleado: 'Test',
-      turno: 'Mañana',
-      fechaApertura: '',
-      fechaAperturaSeparada: '',
-      horaApertura: '',
-      montoApertura: 0,
-      ventas: [],
-      totales: { efectivo: 0, transferencia: 0, pos: 0 },
-      cantidadVentas: 0,
-      cantidadProductos: 0,
-      totalVendido: 0
-    };
+  // En modo test, crear una caja ficticia si no existe
+  if (process.env.NODE_ENV === 'test') {
+    // No necesitamos crear caja ficticia aquí, el registro de venta lo manejará
   }
   try {
     const { productos, cantidades, total, efectivo, transferencia, pos, observaciones } = req.body;
@@ -444,6 +604,13 @@ app.post('/api/ventas', requireAuth, async (req, res) => {
       return null;
     };
     
+    // Obtener caja abierta para el empleado
+    const caja = await obtenerCajaAbierta();
+    const empleadoCaja = caja ? caja.empleado : 'Sistema';
+    
+    // Generar ID único para la venta
+    const idVenta = uuidv4();
+    
     // Preparar filas para la hoja Ventas
     let filasVenta = productos.map((nombre, i) => {
       // Buscar precio unitario en Stock
@@ -468,7 +635,7 @@ app.post('/api/ventas', requireAuth, async (req, res) => {
         cantidad,
         precioUnitario,
         subtotal,
-        '', '', '', '', '', '', cajaActual.empleado // Total, Efectivo, Transferencia, POS, Observaciones, Vendedor
+        '', '', '', '', '', idVenta, empleadoCaja // Total, Efectivo, Transferencia, POS, Observaciones, ID Venta, Vendedor
       ];
     });
     // Calcular subtotales y total
@@ -552,7 +719,10 @@ app.post('/api/ventas', requireAuth, async (req, res) => {
     }
     
     // Registrar venta en caja ANTES de enviar respuesta
-    registrarVentaEnCaja(req.body);
+    const resultadoCaja = await registrarVentaEnCaja(req.body);
+    if (!resultadoCaja.success) {
+      return res.status(500).json({ error: resultadoCaja.error });
+    }
     
     res.json({ success: true });
   } catch (error) {
@@ -815,7 +985,7 @@ app.delete('/api/ventas/:id', async (req, res) => {
 // Obtener listado de cajas
 app.get('/api/cajas', async (req, res) => {
   try {
-    const CAJA_RANGE = 'Caja!A:M';
+    const CAJA_RANGE = 'Cajas!A:P';
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId: SPREADSHEET_ID,
       range: CAJA_RANGE,
@@ -826,28 +996,29 @@ app.get('/api/cajas', async (req, res) => {
       return res.json([]);
     }
 
-    // Usar los encabezados reales
-    // ["Fecha Apertura", "Hora Apertura", "Fecha Cierre", "Hora Cierre", "Turno", "Empleado", "Monto Apertura", "Efectivo", "Transferencia", "POS", "Cant. Ventas", "Cant. Productos", "Monto Cierre"]
+    // Nueva estructura: ["ID", "Fecha Apertura", "Hora Apertura", "Fecha Cierre", "Hora Cierre", "Estado", "Turno", "Empleado", "Monto Apertura", "Efectivo", "Transferencia", "POS", "Cant. Ventas", "Cant. Productos", "Monto Cierre", "Total Vendido"]
     const cajas = [];
     for (let i = 1; i < rows.length; i++) {
       const fila = rows[i];
-      // Solo filas con fecha de apertura, hora de apertura y empleado
-      if (fila[0] && fila[1] && fila[5]) {
+      // Solo filas con ID y datos válidos
+      if (fila[0] && fila[1] && fila[7]) {
         cajas.push({
-          id: i,
-          fechaApertura: fila[0],
-          horaApertura: fila[1],
-          fechaCierre: fila[2],
-          horaCierre: fila[3],
-          turno: fila[4],
-          empleado: fila[5],
-          montoApertura: Number(fila[6]) || 0,
-          efectivo: Number(fila[7]) || 0,
-          transferencia: Number(fila[8]) || 0,
-          pos: Number(fila[9]) || 0,
-          cantidadVentas: Number(fila[10]) || 0,
-          cantidadProductos: Number(fila[11]) || 0,
-          montoCierre: Number(fila[12]) || 0
+          id: fila[0], // ID único
+          fechaApertura: fila[1],
+          horaApertura: fila[2],
+          fechaCierre: fila[3],
+          horaCierre: fila[4],
+          estado: fila[5],
+          turno: fila[6],
+          empleado: fila[7],
+          montoApertura: Number(fila[8]) || 0,
+          efectivo: Number(fila[9]) || 0,
+          transferencia: Number(fila[10]) || 0,
+          pos: Number(fila[11]) || 0,
+          cantidadVentas: Number(fila[12]) || 0,
+          cantidadProductos: Number(fila[13]) || 0,
+          montoCierre: Number(fila[14]) || 0,
+          totalVendido: Number(fila[15]) || 0
         });
       }
     }
@@ -863,66 +1034,62 @@ app.get('/api/cajas', async (req, res) => {
 app.delete('/api/cajas/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const filaId = parseInt(id);
     
-    if (isNaN(filaId)) {
-      return res.status(400).json({ error: 'ID de caja inválido' });
-    }
-
-    const CAJA_RANGE = 'Caja!A:M';
+    // Buscar la caja por ID único en lugar de por número de fila
+    const CAJA_RANGE = 'Cajas!A:P';
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId: SPREADSHEET_ID,
       range: CAJA_RANGE,
     });
 
     const rows = response.data.values;
-    if (!rows || rows.length <= filaId) {
+    if (!rows || rows.length <= 1) {
+      return res.status(404).json({ error: 'No hay cajas registradas' });
+    }
+
+    // Buscar la fila que contiene el ID
+    let filaIndex = -1;
+    for (let i = 1; i < rows.length; i++) {
+      if (rows[i][0] === id) { // Columna A: ID
+        filaIndex = i;
+        break;
+      }
+    }
+
+    if (filaIndex === -1) {
       return res.status(404).json({ error: 'Caja no encontrada' });
     }
 
     // Verificar que la fila existe y tiene datos de caja
-    const fila = rows[filaId];
-    if (!fila || !fila[0] || !fila[1] || !fila[2]) {
+    const fila = rows[filaIndex];
+    if (!fila || !fila[0] || !fila[1] || !fila[7]) {
       return res.status(404).json({ error: 'Caja no encontrada o datos inválidos' });
     }
 
     // Obtener datos de la caja antes de eliminar
     const cajaEliminada = {
-      fecha: fila[0],
-      hora: fila[1],
-      total: Number(fila[2]) || 0,
-      efectivo: Number(fila[3]) || 0,
-      transferencia: Number(fila[4]) || 0,
-      pos: Number(fila[5]) || 0,
-      turno: fila[6] || '',
-      empleado: fila[7] || '',
+      id: fila[0],
+      fechaApertura: fila[1],
+      horaApertura: fila[2],
+      fechaCierre: fila[3],
+      horaCierre: fila[4],
+      estado: fila[5],
+      turno: fila[6],
+      empleado: fila[7],
       montoApertura: Number(fila[8]) || 0,
-      cantidadVentas: Number(fila[9]) || 0,
-      cantidadProductos: Number(fila[10]) || 0,
-      totalVendido: Number(fila[11]) || 0,
-      observaciones: fila[12] || ''
+      efectivo: Number(fila[9]) || 0,
+      transferencia: Number(fila[10]) || 0,
+      pos: Number(fila[11]) || 0,
+      cantidadVentas: Number(fila[12]) || 0,
+      cantidadProductos: Number(fila[13]) || 0,
+      montoCierre: Number(fila[14]) || 0,
+      totalVendido: Number(fila[15]) || 0
     };
 
-    // Eliminar la fila
-    const sheetId = await getSheetId('Caja');
-    if (!sheetId) {
-      return res.status(500).json({ error: 'No se pudo obtener el ID de la hoja Caja' });
-    }
-
-    await sheets.spreadsheets.batchUpdate({
+    // Eliminar la fila usando clear para limpiar los datos
+    await sheets.spreadsheets.values.clear({
       spreadsheetId: SPREADSHEET_ID,
-      requestBody: {
-        requests: [{
-          deleteDimension: {
-            range: {
-              sheetId: sheetId,
-              dimension: 'ROWS',
-              startIndex: filaId,
-              endIndex: filaId + 1
-            }
-          }
-        }]
-      }
+      range: `Cajas!A${filaIndex + 1}:P${filaIndex + 1}`
     });
 
     res.json({ 
@@ -953,7 +1120,7 @@ app.get('/api/reportes/metricas', async (req, res) => {
     const ventasRows = ventasResp.data.values;
 
     // Obtener cajas
-    const CAJA_RANGE = 'Caja!A:M';
+    const CAJA_RANGE = 'Cajas!A:P';
     const cajaResp = await sheets.spreadsheets.values.get({
       spreadsheetId: SPREADSHEET_ID,
       range: CAJA_RANGE,
