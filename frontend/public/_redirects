@@ -1,4 +1,4 @@
-# Configuración para Render - Manejar rutas del frontend
+# Manejar rutas del frontend
 /*    /index.html   200
 /admin    /index.html   200
 /admin/*    /index.html   200 
