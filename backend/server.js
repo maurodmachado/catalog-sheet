@@ -953,14 +953,15 @@ app.delete('/api/ventas/:id', async (req, res) => {
     }
 
     // Registrar eliminación en caja si está abierta
-    if (cajaActual && cajaActual.abierta) {
-      cajaActual.totales.efectivo -= efectivoVenta;
-      cajaActual.totales.transferencia -= transferenciaVenta;
-      cajaActual.totales.pos -= posVenta;
-      cajaActual.totalVendido -= totalVenta;
-      cajaActual.cantidadVentas--;
-      cajaActual.cantidadProductos -= cantidadProductosVenta;
-      guardarCaja();
+    const cajaAbierta = await obtenerCajaAbierta();
+    if (cajaAbierta && cajaAbierta.estado === 'Abierta') {
+      cajaAbierta.efectivo = Number(cajaAbierta.efectivo) - efectivoVenta;
+      cajaAbierta.transferencia = Number(cajaAbierta.transferencia) - transferenciaVenta;
+      cajaAbierta.pos = Number(cajaAbierta.pos) - posVenta;
+      cajaAbierta.totalVendido = Number(cajaAbierta.totalVendido) - totalVenta;
+      cajaAbierta.cantidadVentas = Number(cajaAbierta.cantidadVentas) - 1;
+      cajaAbierta.cantidadProductos = Number(cajaAbierta.cantidadProductos) - cantidadProductosVenta;
+      await actualizarCajaEnSheets(cajaAbierta);
     }
 
     res.json({ 
