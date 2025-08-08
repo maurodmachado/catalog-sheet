@@ -20,11 +20,30 @@ function App() {
   const [notificacion, setNotificacion] = useState(null);
   const carritoRef = useRef(null);
 
+  // Estado para configuración del catálogo
+  const [configuracion, setConfiguracion] = useState({
+    nombreEmpresa: 'ALNORTEGROW',
+    logoUrl: '',
+    textoFooter: 'www.alnortegrow.com.ar',
+    numeroWhatsapp: '',
+    colorNavbar: '#fbbf24',
+    colorNavbarGradiente: false,
+    colorNavbarGradiente1: '#fbbf24',
+    colorNavbarGradiente2: '#f59e0b',
+    colorFooter: '#1e293b',
+    colorFooterGradiente: false,
+    colorFooterGradiente1: '#1e293b',
+    colorFooterGradiente2: '#334155',
+    colorTextoNavbar: '#1e293b',
+    colorTextoFooter: '#ffffff'
+  });
+
   // URL de la API (usa variable de entorno en producción)
   const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3001') + '/api'
 
   useEffect(() => {
     cargarProductos()
+    cargarConfiguracion()
   }, [])
 
   useEffect(() => {
@@ -47,6 +66,27 @@ function App() {
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, [mostrarCarrito]);
+
+  const cargarConfiguracion = async () => {
+    try {
+      const response = await fetch(`${API_URL}/configuracion?t=${Date.now()}`, {
+        cache: 'no-cache'
+      });
+      if (response.ok) {
+        const data = await response.json();
+        // Convertir valores booleanos correctamente
+        const configuracionConvertida = {
+          ...data,
+          colorNavbarGradiente: Boolean(data.colorNavbarGradiente),
+          colorFooterGradiente: Boolean(data.colorFooterGradiente)
+        };
+        setConfiguracion(configuracionConvertida);
+      }
+    } catch (err) {
+      console.error('Error al cargar configuración:', err);
+      // Usar configuración por defecto si hay error
+    }
+  };
 
   const cargarProductos = async () => {
     try {
@@ -315,8 +355,20 @@ function App() {
           </div>
       </div>
       )}
-      <header className="header">
-        <h1><img src={logo} alt="ALNORTEGROW" className="logo-header" /> ALNORTEGROW</h1>
+      <header className="header" style={{ 
+        background: configuracion.colorNavbarGradiente 
+          ? `linear-gradient(135deg, ${configuracion.colorNavbarGradiente1}, ${configuracion.colorNavbarGradiente2})`
+          : configuracion.colorNavbar, 
+        color: configuracion.colorTextoNavbar 
+      }}>
+        <h1>
+          {configuracion.logoUrl ? (
+            <img src={configuracion.logoUrl} alt={configuracion.nombreEmpresa} className="logo-header" />
+          ) : (
+            <img src={logo} alt={configuracion.nombreEmpresa} className="logo-header" />
+          )}
+          {configuracion.nombreEmpresa}
+        </h1>
       </header>
 
       <main className="main">
@@ -561,12 +613,22 @@ function App() {
         </p>
       </div>
       </main>
-      <footer className="footer-app">
-        <a href="https://alnortegrow.com.ar" target="_blank" rel="noopener noreferrer">
-          <img src={logo} alt="ALNORTEGROW" className="logo-footer" /> www.alnortegrow.com.ar
+      <footer className="footer-app" style={{ 
+        background: configuracion.colorFooterGradiente 
+          ? `linear-gradient(135deg, ${configuracion.colorFooterGradiente1}, ${configuracion.colorFooterGradiente2})`
+          : configuracion.colorFooter, 
+        color: configuracion.colorTextoFooter 
+      }}>
+        <a href="https://alnortegrow.com.ar" target="_blank" rel="noopener noreferrer" style={{ color: configuracion.colorTextoFooter }}>
+          {configuracion.logoUrl ? (
+            <img src={configuracion.logoUrl} alt={configuracion.nombreEmpresa} className="logo-footer" />
+          ) : (
+            <img src={logo} alt={configuracion.nombreEmpresa} className="logo-footer" />
+          )}
+          {configuracion.textoFooter}
         </a>
       </footer>
-      <a href={`https://www.whatsapp.com/catalog/${import.meta.env.VITE_TELEFONO}/`} className="whatsapp-float" target="_blank" rel="noopener noreferrer" title="Ver catálogo en WhatsApp">
+      <a href={`https://www.whatsapp.com/catalog/${configuracion.numeroWhatsapp || import.meta.env.VITE_TELEFONO}/`} className="whatsapp-float" target="_blank" rel="noopener noreferrer" title="Ver catálogo en WhatsApp">
         <img src={whatsappLogo} alt="WhatsApp" style={{width: '70%', height: '70%', objectFit: 'contain', display: 'block'}} />
       </a>
 

@@ -136,6 +136,29 @@ export default function Admin() {
   const [filtroAnio, setFiltroAnio] = useState(String(new Date().getFullYear())); // Año actual
   const [filtroEmpleado, setFiltroEmpleado] = useState('');
 
+  // --- Estados para configuración del catálogo ---
+  const [configuracion, setConfiguracion] = useState({
+    nombreEmpresa: 'ALNORTEGROW',
+    logoUrl: '',
+    textoFooter: 'www.alnortegrow.com.ar',
+    numeroWhatsapp: '',
+    // Gradientes para navbar y footer
+    colorNavbar: '#fbbf24',
+    colorNavbarGradiente: false,
+    colorNavbarGradiente1: '#fbbf24',
+    colorNavbarGradiente2: '#f59e0b',
+    colorFooter: '#1e293b',
+    colorFooterGradiente: false,
+    colorFooterGradiente1: '#1e293b',
+    colorFooterGradiente2: '#334155',
+    colorTextoNavbar: '#1e293b',
+    colorTextoFooter: '#ffffff'
+  });
+  const [loadingConfiguracion, setLoadingConfiguracion] = useState(false);
+  const [errorConfiguracion, setErrorConfiguracion] = useState('');
+  const [mostrarConfiguracion, setMostrarConfiguracion] = useState(false);
+  const [editandoConfiguracion, setEditandoConfiguracion] = useState(false);
+
 
 
   // --- Estado para mostrar todos los productos ---
@@ -619,10 +642,6 @@ export default function Admin() {
       }
       
       const requestBody = { turno, empleado: empleadoParaEnviar, montoApertura };
-      console.log('Enviando datos:', requestBody);
-      console.log('userRol:', userRol);
-      console.log('empleadoCaja:', empleadoCaja);
-      console.log('empleadoParaEnviar:', empleadoParaEnviar);
       
       const res = await fetchWithAuth(`${API_URL}/caja/abrir`, {
         method: 'POST',
@@ -1840,6 +1859,77 @@ export default function Admin() {
     return { mes: null, anio: null };
   }
 
+  // --- Funciones para configuración del catálogo ---
+  const cargarConfiguracion = async () => {
+    setLoadingConfiguracion(true);
+    setErrorConfiguracion('');
+    try {
+      const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3001') + '/api';
+      
+      const res = await fetch(`${API_URL}/configuracion?t=${Date.now()}`, {
+        cache: 'no-cache'
+      });
+      
+      if (!res.ok) {
+        throw new Error(`Error ${res.status}: ${res.statusText}`);
+      }
+      
+      const data = await res.json();
+      // Convertir valores booleanos correctamente
+      const configuracionConvertida = {
+        ...data,
+        colorNavbarGradiente: Boolean(data.colorNavbarGradiente),
+        colorFooterGradiente: Boolean(data.colorFooterGradiente)
+      };
+      setConfiguracion(configuracionConvertida);
+      
+    } catch (err) {
+      console.error('Error al cargar configuración:', err);
+      setErrorConfiguracion(`No se pudo cargar la configuración: ${err.message}`);
+    } finally {
+      setLoadingConfiguracion(false);
+    }
+  };
+
+  const actualizarConfiguracion = async () => {
+    if (!configuracion.nombreEmpresa) {
+      mostrarNotificacion('El nombre de la empresa es requerido', 'error');
+      return;
+    }
+
+    setEditandoConfiguracion(true);
+    try {
+      const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3001') + '/api';
+      
+      const res = await fetchWithAuth(`${API_URL}/configuracion`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(configuracion)
+      });
+      
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({ error: 'Error desconocido' }));
+        throw new Error(errorData.error || `Error ${res.status}`);
+      }
+      
+      const data = await res.json();
+      mostrarNotificacion('✅ Configuración actualizada correctamente', 'success');
+      // Convertir valores booleanos correctamente en la respuesta
+      const configuracionActualizada = {
+        ...data.config,
+        colorNavbarGradiente: Boolean(data.config.colorNavbarGradiente),
+        colorFooterGradiente: Boolean(data.config.colorFooterGradiente)
+      };
+      setConfiguracion(configuracionActualizada);
+      
+    } catch (err) {
+      console.error('Error al actualizar configuración:', err);
+      mostrarNotificacion(`❌ Error: ${err.message}`, 'error');
+    } finally {
+      setEditandoConfiguracion(false);
+    }
+  };
+
   return (
     <div style={{ minHeight: '100vh', background: '#f8fafc', padding: '2rem 0' }}>
       <div style={{ maxWidth: 1200, margin: '0 auto', marginBottom: 24 }}>
@@ -1996,10 +2086,10 @@ export default function Admin() {
           {/* Botones de navegación */}
           <div style={{ display: 'flex', gap: 16, marginBottom: 24, flexWrap: 'wrap', justifyContent:'center' }}>
   <button
-    onClick={() => { setMostrarGestionVentas(false); setMostrarGestionCajas(false); setMostrarReportes(false); setMostrarGestionStock(false); setMostrarGestionEmpleados(false); setMostrarGestionUsuarios(false); }}
+    onClick={() => { setMostrarGestionVentas(false); setMostrarGestionCajas(false); setMostrarReportes(false); setMostrarGestionStock(false); setMostrarGestionEmpleados(false); setMostrarGestionUsuarios(false); setMostrarConfiguracion(false); }}
     style={{
-      background: (!mostrarGestionVentas && !mostrarGestionCajas && !mostrarReportes && !mostrarGestionStock && !mostrarGestionEmpleados && !mostrarGestionUsuarios) ? 'linear-gradient(135deg, #fbbf24, #f59e0b)' : '#f1f5f9',
-      color: (!mostrarGestionVentas && !mostrarGestionCajas && !mostrarReportes && !mostrarGestionStock && !mostrarGestionEmpleados && !mostrarGestionUsuarios) ? '#1e293b' : '#64748b',
+      background: (!mostrarGestionVentas && !mostrarGestionCajas && !mostrarReportes && !mostrarGestionStock && !mostrarGestionEmpleados && !mostrarGestionUsuarios && !mostrarConfiguracion) ? 'linear-gradient(135deg, #fbbf24, #f59e0b)' : '#f1f5f9',
+      color: (!mostrarGestionVentas && !mostrarGestionCajas && !mostrarReportes && !mostrarGestionStock && !mostrarGestionEmpleados && !mostrarGestionUsuarios && !mostrarConfiguracion) ? '#1e293b' : '#64748b',
       border: 'none',
       padding: '0.7rem 1.2rem',
       borderRadius: 10,
@@ -2012,7 +2102,7 @@ export default function Admin() {
     {isMobile ? '🛒' : <>🛒 Nueva Venta</>}
   </button>
   <button
-    onClick={() => { setMostrarGestionVentas(true); setMostrarGestionCajas(false); setMostrarReportes(false); setMostrarGestionStock(false); setMostrarGestionEmpleados(false); setMostrarGestionUsuarios(false); }}
+    onClick={() => { setMostrarGestionVentas(true); setMostrarGestionCajas(false); setMostrarReportes(false); setMostrarGestionStock(false); setMostrarGestionEmpleados(false); setMostrarGestionUsuarios(false); setMostrarConfiguracion(false); }}
     style={{
       background: mostrarGestionVentas ? 'linear-gradient(135deg, #fbbf24, #f59e0b)' : '#f1f5f9',
       color: mostrarGestionVentas ? '#1e293b' : '#64748b',
@@ -2028,7 +2118,7 @@ export default function Admin() {
     {isMobile ? '📋' : <>📋 Gestionar Ventas</>}
   </button>
   <button
-    onClick={() => { setMostrarGestionVentas(false); setMostrarGestionCajas(true); setMostrarReportes(false); setMostrarGestionStock(false); setMostrarGestionEmpleados(false); setMostrarGestionUsuarios(false); }}
+    onClick={() => { setMostrarGestionVentas(false); setMostrarGestionCajas(true); setMostrarReportes(false); setMostrarGestionStock(false); setMostrarGestionEmpleados(false); setMostrarGestionUsuarios(false); setMostrarConfiguracion(false); }}
     style={{
       background: mostrarGestionCajas ? 'linear-gradient(135deg, #fbbf24, #f59e0b)' : '#f1f5f9',
       color: mostrarGestionCajas ? '#1e293b' : '#64748b',
@@ -2044,7 +2134,7 @@ export default function Admin() {
     {isMobile ? '💰' : <>💰 Gestionar Cajas</>}
   </button>
   <button
-    onClick={() => { setMostrarGestionVentas(false); setMostrarGestionCajas(false); setMostrarReportes(false); setMostrarGestionStock(true); setMostrarGestionEmpleados(false); setMostrarGestionUsuarios(false); }}
+    onClick={() => { setMostrarGestionVentas(false); setMostrarGestionCajas(false); setMostrarReportes(false); setMostrarGestionStock(true); setMostrarGestionEmpleados(false); setMostrarGestionUsuarios(false); setMostrarConfiguracion(false); }}
     style={{
       background: mostrarGestionStock ? 'linear-gradient(135deg, #fbbf24, #f59e0b)' : '#f1f5f9',
       color: mostrarGestionStock ? '#1e293b' : '#64748b',
@@ -2061,7 +2151,7 @@ export default function Admin() {
   </button>
   {userRol === 'Administrador' && (
     <button
-      onClick={() => { setMostrarGestionVentas(false); setMostrarGestionCajas(false); setMostrarReportes(false); setMostrarGestionStock(false); setMostrarGestionEmpleados(true); setMostrarGestionUsuarios(false); }}
+      onClick={() => { setMostrarGestionVentas(false); setMostrarGestionCajas(false); setMostrarReportes(false); setMostrarGestionStock(false); setMostrarGestionEmpleados(true); setMostrarGestionUsuarios(false); setMostrarConfiguracion(false); }}
       style={{
         background: mostrarGestionEmpleados ? 'linear-gradient(135deg, #fbbf24, #f59e0b)' : '#f1f5f9',
         color: mostrarGestionEmpleados ? '#1e293b' : '#64748b',
@@ -2079,7 +2169,7 @@ export default function Admin() {
   )}
   {userRol === 'Administrador' && (
     <button
-      onClick={() => { setMostrarGestionVentas(false); setMostrarGestionCajas(false); setMostrarReportes(false); setMostrarGestionStock(false); setMostrarGestionEmpleados(false); setMostrarGestionUsuarios(true); }}
+      onClick={() => { setMostrarGestionVentas(false); setMostrarGestionCajas(false); setMostrarReportes(false); setMostrarGestionStock(false); setMostrarGestionEmpleados(false); setMostrarGestionUsuarios(true); setMostrarConfiguracion(false); }}
       style={{
         background: mostrarGestionUsuarios ? 'linear-gradient(135deg, #fbbf24, #f59e0b)' : '#f1f5f9',
         color: mostrarGestionUsuarios ? '#1e293b' : '#64748b',
@@ -2097,7 +2187,7 @@ export default function Admin() {
   )}
   {userRol === 'Administrador' && (
     <button
-      onClick={() => { setMostrarGestionVentas(false); setMostrarGestionCajas(false); setMostrarReportes(true); setMostrarGestionStock(false); setMostrarGestionEmpleados(false); setMostrarGestionUsuarios(false); }}
+      onClick={() => { setMostrarGestionVentas(false); setMostrarGestionCajas(false); setMostrarReportes(true); setMostrarGestionStock(false); setMostrarGestionEmpleados(false); setMostrarGestionUsuarios(false); setMostrarConfiguracion(false); }}
       style={{
         background: mostrarReportes ? 'linear-gradient(135deg, #fbbf24, #f59e0b)' : '#f1f5f9',
         color: mostrarReportes ? '#1e293b' : '#64748b',
@@ -2111,6 +2201,33 @@ export default function Admin() {
       className="admin-nav-btn"
     >
       {isMobile ? '📊' : <>📊 Reportes</>}
+    </button>
+  )}
+  {userRol === 'Administrador' && (
+    <button
+      onClick={() => { 
+        setMostrarGestionVentas(false); 
+        setMostrarGestionCajas(false); 
+        setMostrarReportes(false); 
+        setMostrarGestionStock(false); 
+        setMostrarGestionEmpleados(false); 
+        setMostrarGestionUsuarios(false);
+        setMostrarConfiguracion(true);
+        cargarConfiguracion();
+      }}
+      style={{
+        background: mostrarConfiguracion ? 'linear-gradient(135deg, #fbbf24, #f59e0b)' : '#f1f5f9',
+        color: mostrarConfiguracion ? '#1e293b' : '#64748b',
+        border: 'none',
+        padding: '0.7rem 1.2rem',
+        borderRadius: 10,
+        fontWeight: 700,
+        fontSize: '1rem',
+        cursor: 'pointer'
+      }}
+      className="admin-nav-btn"
+    >
+      {isMobile ? '⚙️' : <>⚙️ Catálogo</>}
     </button>
   )}
 </div>
@@ -2908,7 +3025,320 @@ export default function Admin() {
             )}
           </div>
         </div>
-              ) : mostrarGestionEmpleados && userRol === 'Administrador' ? (
+      ) : mostrarConfiguracion && userRol === 'Administrador' ? (
+        <div>
+          <h2 style={{ color: '#1e293b', fontWeight: 800, marginBottom: 24 }}>⚙️ Configuración del Catálogo</h2>
+          
+          {loadingConfiguracion ? (
+            <div style={{ textAlign: 'center', padding: '2rem', color: '#64748b' }}>Cargando configuración...</div>
+          ) : errorConfiguracion ? (
+            <div style={{ color: '#dc2626', textAlign: 'center', padding: '2rem' }}>{errorConfiguracion}</div>
+          ) : (
+            <div style={{ background: '#f8fafc', borderRadius: 12, padding: '1.5rem', marginBottom: 24, border: '1px solid #e2e8f0' }}>
+              <h3 style={{ color: '#1e293b', fontWeight: 700, marginBottom: 16 }}>🎨 Personalización del Catálogo</h3>
+              
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(2, 1fr)', gap: 20 }}>
+                {/* Configuración básica */}
+                <div>
+                  <h4 style={{ color: '#1e293b', fontWeight: 600, marginBottom: 12 }}>📝 Información Básica</h4>
+                  
+                  <div style={{ marginBottom: 16 }}>
+                    <label style={{ display: 'block', fontWeight: 600, color: '#64748b', marginBottom: 6 }}>Nombre de la Empresa *</label>
+                    <input 
+                      type="text" 
+                      value={configuracion.nombreEmpresa} 
+                      onChange={e => setConfiguracion({ ...configuracion, nombreEmpresa: e.target.value })} 
+                      placeholder="Ej: ALNORTEGROW" 
+                      style={{ width: '100%', padding: '0.7rem', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: '1rem', background: 'white' }} 
+                    />
+                  </div>
+                  
+                  <div style={{ marginBottom: 16 }}>
+                    <label style={{ display: 'block', fontWeight: 600, color: '#64748b', marginBottom: 6 }}>URL del Logo</label>
+                    <input 
+                      type="url" 
+                      value={configuracion.logoUrl} 
+                      onChange={e => setConfiguracion({ ...configuracion, logoUrl: e.target.value })} 
+                      placeholder="https://ejemplo.com/logo.png" 
+                      style={{ width: '100%', padding: '0.7rem', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: '1rem', background: 'white' }} 
+                    />
+                    <small style={{ color: '#64748b', fontSize: '0.8rem' }}>Deja vacío para usar el logo por defecto</small>
+                  </div>
+                  
+                  <div style={{ marginBottom: 16 }}>
+                    <label style={{ display: 'block', fontWeight: 600, color: '#64748b', marginBottom: 6 }}>Texto del Footer</label>
+                    <input 
+                      type="text" 
+                      value={configuracion.textoFooter} 
+                      onChange={e => setConfiguracion({ ...configuracion, textoFooter: e.target.value })} 
+                      placeholder="Ej: www.alnortegrow.com.ar" 
+                      style={{ width: '100%', padding: '0.7rem', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: '1rem', background: 'white' }} 
+                    />
+                  </div>
+                  
+                  <div style={{ marginBottom: 16 }}>
+                    <label style={{ display: 'block', fontWeight: 600, color: '#64748b', marginBottom: 6 }}>Número de WhatsApp</label>
+                    <input 
+                      type="text" 
+                      value={configuracion.numeroWhatsapp} 
+                      onChange={e => setConfiguracion({ ...configuracion, numeroWhatsapp: e.target.value })} 
+                      placeholder="Ej: 5491112345678" 
+                      style={{ width: '100%', padding: '0.7rem', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: '1rem', background: 'white' }} 
+                    />
+                    <small style={{ color: '#64748b', fontSize: '0.8rem' }}>Solo números, sin + ni espacios</small>
+                  </div>
+                </div>
+                
+                {/* Configuración de colores */}
+                <div>
+                  <h4 style={{ color: '#1e293b', fontWeight: 600, marginBottom: 12 }}>🎨 Colores</h4>
+                  
+                  {/* Navbar */}
+                  <div style={{ marginBottom: 24, padding: '1rem', background: 'white', borderRadius: 8, border: '1px solid #e2e8f0' }}>
+                    <h5 style={{ color: '#1e293b', fontWeight: 600, marginBottom: 12 }}>🎨 Navbar</h5>
+                    
+                    <div style={{ marginBottom: 12 }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 600, color: '#64748b', marginBottom: 6 }}>
+                        <input 
+                          type="checkbox" 
+                          checked={configuracion.colorNavbarGradiente} 
+                          onChange={e => setConfiguracion({ ...configuracion, colorNavbarGradiente: e.target.checked })} 
+                          style={{ width: 16, height: 16 }}
+                        />
+                        Usar gradiente
+                      </label>
+                    </div>
+                    
+                    {configuracion.colorNavbarGradiente ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                          <label style={{ fontWeight: 600, color: '#64748b', fontSize: '0.9rem', minWidth: 80 }}>Color 1:</label>
+                          <input 
+                            type="color" 
+                            value={configuracion.colorNavbarGradiente1} 
+                            onChange={e => setConfiguracion({ ...configuracion, colorNavbarGradiente1: e.target.value })} 
+                            style={{ width: 50, height: 40, border: 'none', borderRadius: 6, cursor: 'pointer' }} 
+                          />
+                          <input 
+                            type="text" 
+                            value={configuracion.colorNavbarGradiente1} 
+                            onChange={e => setConfiguracion({ ...configuracion, colorNavbarGradiente1: e.target.value })} 
+                            style={{ flex: 1, padding: '0.5rem', borderRadius: 6, border: '1px solid #cbd5e1', fontSize: '0.9rem', background: 'white' }} 
+                          />
+                        </div>
+                        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                          <label style={{ fontWeight: 600, color: '#64748b', fontSize: '0.9rem', minWidth: 80 }}>Color 2:</label>
+                          <input 
+                            type="color" 
+                            value={configuracion.colorNavbarGradiente2} 
+                            onChange={e => setConfiguracion({ ...configuracion, colorNavbarGradiente2: e.target.value })} 
+                            style={{ width: 50, height: 40, border: 'none', borderRadius: 6, cursor: 'pointer' }} 
+                          />
+                          <input 
+                            type="text" 
+                            value={configuracion.colorNavbarGradiente2} 
+                            onChange={e => setConfiguracion({ ...configuracion, colorNavbarGradiente2: e.target.value })} 
+                            style={{ flex: 1, padding: '0.5rem', borderRadius: 6, border: '1px solid #cbd5e1', fontSize: '0.9rem', background: 'white' }} 
+                          />
+                        </div>
+                        <div style={{ 
+                          height: 40, 
+                          background: `linear-gradient(135deg, ${configuracion.colorNavbarGradiente1}, ${configuracion.colorNavbarGradiente2})`,
+                          borderRadius: 6,
+                          border: '1px solid #e2e8f0'
+                        }}></div>
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                        <input 
+                          type="color" 
+                          value={configuracion.colorNavbar} 
+                          onChange={e => setConfiguracion({ ...configuracion, colorNavbar: e.target.value })} 
+                          style={{ width: 50, height: 40, border: 'none', borderRadius: 6, cursor: 'pointer' }} 
+                        />
+                        <input 
+                          type="text" 
+                          value={configuracion.colorNavbar} 
+                          onChange={e => setConfiguracion({ ...configuracion, colorNavbar: e.target.value })} 
+                          style={{ flex: 1, padding: '0.7rem', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: '1rem', background: 'white' }} 
+                        />
+                      </div>
+                    )}
+                  </div>
+                  
+                  {/* Footer */}
+                  <div style={{ marginBottom: 24, padding: '1rem', background: 'white', borderRadius: 8, border: '1px solid #e2e8f0' }}>
+                    <h5 style={{ color: '#1e293b', fontWeight: 600, marginBottom: 12 }}>🎨 Footer</h5>
+                    
+                    <div style={{ marginBottom: 12 }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 600, color: '#64748b', marginBottom: 6 }}>
+                        <input 
+                          type="checkbox" 
+                          checked={configuracion.colorFooterGradiente} 
+                          onChange={e => setConfiguracion({ ...configuracion, colorFooterGradiente: e.target.checked })} 
+                          style={{ width: 16, height: 16 }}
+                        />
+                        Usar gradiente
+                      </label>
+                    </div>
+                    
+                    {configuracion.colorFooterGradiente ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                          <label style={{ fontWeight: 600, color: '#64748b', fontSize: '0.9rem', minWidth: 80 }}>Color 1:</label>
+                          <input 
+                            type="color" 
+                            value={configuracion.colorFooterGradiente1} 
+                            onChange={e => setConfiguracion({ ...configuracion, colorFooterGradiente1: e.target.value })} 
+                            style={{ width: 50, height: 40, border: 'none', borderRadius: 6, cursor: 'pointer' }} 
+                          />
+                          <input 
+                            type="text" 
+                            value={configuracion.colorFooterGradiente1} 
+                            onChange={e => setConfiguracion({ ...configuracion, colorFooterGradiente1: e.target.value })} 
+                            style={{ flex: 1, padding: '0.5rem', borderRadius: 6, border: '1px solid #cbd5e1', fontSize: '0.9rem', background: 'white' }} 
+                          />
+                        </div>
+                        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                          <label style={{ fontWeight: 600, color: '#64748b', fontSize: '0.9rem', minWidth: 80 }}>Color 2:</label>
+                          <input 
+                            type="color" 
+                            value={configuracion.colorFooterGradiente2} 
+                            onChange={e => setConfiguracion({ ...configuracion, colorFooterGradiente2: e.target.value })} 
+                            style={{ width: 50, height: 40, border: 'none', borderRadius: 6, cursor: 'pointer' }} 
+                          />
+                          <input 
+                            type="text" 
+                            value={configuracion.colorFooterGradiente2} 
+                            onChange={e => setConfiguracion({ ...configuracion, colorFooterGradiente2: e.target.value })} 
+                            style={{ flex: 1, padding: '0.5rem', borderRadius: 6, border: '1px solid #cbd5e1', fontSize: '0.9rem', background: 'white' }} 
+                          />
+                        </div>
+                        <div style={{ 
+                          height: 40, 
+                          background: `linear-gradient(135deg, ${configuracion.colorFooterGradiente1}, ${configuracion.colorFooterGradiente2})`,
+                          borderRadius: 6,
+                          border: '1px solid #e2e8f0'
+                        }}></div>
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                        <input 
+                          type="color" 
+                          value={configuracion.colorFooter} 
+                          onChange={e => setConfiguracion({ ...configuracion, colorFooter: e.target.value })} 
+                          style={{ width: 50, height: 40, border: 'none', borderRadius: 6, cursor: 'pointer' }} 
+                        />
+                        <input 
+                          type="text" 
+                          value={configuracion.colorFooter} 
+                          onChange={e => setConfiguracion({ ...configuracion, colorFooter: e.target.value })} 
+                          style={{ flex: 1, padding: '0.7rem', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: '1rem', background: 'white' }} 
+                        />
+                      </div>
+                    )}
+                  </div>
+                  
+                  {/* Colores de texto */}
+                  <div style={{ marginBottom: 16 }}>
+                    <label style={{ display: 'block', fontWeight: 600, color: '#64748b', marginBottom: 6 }}>Color del Texto del Navbar</label>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                      <input 
+                        type="color" 
+                        value={configuracion.colorTextoNavbar} 
+                        onChange={e => setConfiguracion({ ...configuracion, colorTextoNavbar: e.target.value })} 
+                        style={{ width: 50, height: 40, border: 'none', borderRadius: 6, cursor: 'pointer' }} 
+                      />
+                      <input 
+                        type="text" 
+                        value={configuracion.colorTextoNavbar} 
+                        onChange={e => setConfiguracion({ ...configuracion, colorTextoNavbar: e.target.value })} 
+                        style={{ flex: 1, padding: '0.7rem', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: '1rem', background: 'white' }} 
+                      />
+                    </div>
+                  </div>
+                  
+                  <div style={{ marginBottom: 16 }}>
+                    <label style={{ display: 'block', fontWeight: 600, color: '#64748b', marginBottom: 6 }}>Color del Texto del Footer</label>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                      <input 
+                        type="color" 
+                        value={configuracion.colorTextoFooter} 
+                        onChange={e => setConfiguracion({ ...configuracion, colorTextoFooter: e.target.value })} 
+                        style={{ width: 50, height: 40, border: 'none', borderRadius: 6, cursor: 'pointer' }} 
+                      />
+                      <input 
+                        type="text" 
+                        value={configuracion.colorTextoFooter} 
+                        onChange={e => setConfiguracion({ ...configuracion, colorTextoFooter: e.target.value })} 
+                        style={{ flex: 1, padding: '0.7rem', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: '1rem', background: 'white' }} 
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              {/* Vista previa */}
+              <div style={{ marginTop: 24, padding: '1rem', background: 'white', borderRadius: 8, border: '1px solid #e2e8f0' }}>
+                <h4 style={{ color: '#1e293b', fontWeight: 600, marginBottom: 12 }}>👁️ Vista Previa</h4>
+                <div style={{ 
+                  background: configuracion.colorNavbarGradiente 
+                    ? `linear-gradient(135deg, ${configuracion.colorNavbarGradiente1}, ${configuracion.colorNavbarGradiente2})`
+                    : configuracion.colorNavbar, 
+                  color: configuracion.colorTextoNavbar,
+                  padding: '1rem', 
+                  borderRadius: '8px 8px 0 0',
+                  fontWeight: 700,
+                  fontSize: '1.2rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8
+                }}>
+                  {configuracion.logoUrl ? (
+                    <img src={configuracion.logoUrl} alt="Logo" style={{ width: 30, height: 30, objectFit: 'contain' }} />
+                  ) : (
+                    <span>🏢</span>
+                  )}
+                  {configuracion.nombreEmpresa || 'ALNORTEGROW'}
+                </div>
+                <div style={{ 
+                  background: configuracion.colorFooterGradiente 
+                    ? `linear-gradient(135deg, ${configuracion.colorFooterGradiente1}, ${configuracion.colorFooterGradiente2})`
+                    : configuracion.colorFooter, 
+                  color: configuracion.colorTextoFooter,
+                  padding: '1rem', 
+                  borderRadius: '0 0 8px 8px',
+                  fontSize: '0.9rem',
+                  textAlign: 'center'
+                }}>
+                  {configuracion.textoFooter || 'www.alnortegrow.com.ar'}
+                </div>
+              </div>
+              
+              {/* Botón de guardar */}
+              <div style={{ marginTop: 24, textAlign: 'center' }}>
+                <button 
+                  onClick={actualizarConfiguracion} 
+                  disabled={editandoConfiguracion || !configuracion.nombreEmpresa}
+                  style={{ 
+                    background: (editandoConfiguracion || !configuracion.nombreEmpresa) ? '#f1f5f9' : 'linear-gradient(135deg, #059669, #10b981)', 
+                    color: (editandoConfiguracion || !configuracion.nombreEmpresa) ? '#64748b' : '#fff', 
+                    border: 'none', 
+                    padding: '1rem 2rem', 
+                    borderRadius: 8, 
+                    fontWeight: 700, 
+                    fontSize: '1rem', 
+                    cursor: (editandoConfiguracion || !configuracion.nombreEmpresa) ? 'not-allowed' : 'pointer',
+                    minWidth: 200
+                  }}
+                >
+                  {editandoConfiguracion ? '💾 Guardando...' : '💾 Guardar Configuración'}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      ) : mostrarGestionEmpleados && userRol === 'Administrador' ? (
             // Vista de gestión de empleados
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>

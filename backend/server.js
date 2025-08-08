@@ -89,12 +89,18 @@ if (process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON) {
 }
 
 // Configurar Google Sheets API
-const auth = new google.auth.GoogleAuth({
-  keyFile: './credentials.json',
-  scopes: ['https://www.googleapis.com/auth/spreadsheets'],
-});
+let auth, sheets;
 
-const sheets = google.sheets({ version: 'v4', auth });
+try {
+  auth = new google.auth.GoogleAuth({
+    keyFile: './credentials.json',
+    scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+  });
+  sheets = google.sheets({ version: 'v4', auth });
+} catch (error) {
+  console.error('❌ Error al inicializar Google Sheets API:', error);
+  // Continuar sin Google Sheets para endpoints básicos
+}
 
 // Configuración de la hoja
 const SPREADSHEET_ID = process.env.SPREADSHEET_ID || 'TU_SPREADSHEET_ID_AQUI';
@@ -150,17 +156,27 @@ function requireAuth(req, res, next) {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
   if (!token) return res.status(401).json({ success: false, message: 'Token requerido' });
+  
   // Buscar en cache
   for (const [usuario, data] of tokenCache.entries()) {
     if (data.token === token && data.exp > Date.now()) {
       req.usuario = usuario;
+      // Intentar obtener el rol del token decodificado
+      try {
+        const decoded = jwt.decode(token);
+        req.rol = decoded.rol || 'Empleado';
+      } catch (error) {
+        req.rol = 'Empleado';
+      }
       return next();
     }
   }
+  
   // Verificar JWT
   jwt.verify(token, TOKEN_SECRET, (err, decoded) => {
     if (err) return res.status(401).json({ success: false, message: 'Token inválido o expirado' });
     req.usuario = decoded.usuario;
+    req.rol = decoded.rol || 'Empleado';
     next();
   });
 }
@@ -2232,6 +2248,215 @@ app.use((err, req, res, next) => {
   });
 });
 
+// --- ENDPOINTS DE CONFIGURACIÓN DEL CATÁLOGO ---
+
+// Obtener configuración del catálogo
+app.get('/api/configuracion', async (req, res) => {
+  try {
+    const CONFIG_RANGE = 'Configuracion!A:B';
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId: SPREADSHEET_ID,
+      range: CONFIG_RANGE,
+    });
+
+    const rows = response.data.values;
+    if (!rows || rows.length <= 1) {
+      // Si no existe la hoja o está vacía, devolver configuración por defecto
+      return res.json({
+        nombreEmpresa: 'ALNORTEGROW',
+        logoUrl: '',
+        textoFooter: 'www.alnortegrow.com.ar',
+        numeroWhatsapp: '',
+        colorNavbar: '#fbbf24',
+        colorNavbarGradiente: false,
+        colorNavbarGradiente1: '#fbbf24',
+        colorNavbarGradiente2: '#f59e0b',
+        colorFooter: '#1e293b',
+        colorFooterGradiente: false,
+        colorFooterGradiente1: '#1e293b',
+        colorFooterGradiente2: '#334155',
+        colorTextoNavbar: '#1e293b',
+        colorTextoFooter: '#ffffff'
+      });
+    }
+
+    // Convertir filas a objeto de configuración
+    const config = {};
+    for (let i = 1; i < rows.length; i++) {
+      const [clave, valor] = rows[i];
+      if (clave && valor !== undefined) {
+        config[clave] = valor;
+      }
+    }
+
+    // Mapeo de nombres de claves del Excel a nombres internos
+    const mapeoClaves = {
+      'Nombre Empresa': 'nombreEmpresa',
+      'Logo URL': 'logoUrl',
+      'Texto Footer': 'textoFooter',
+      'Numero Whatsapp': 'numeroWhatsapp',
+      'Color Navbar': 'colorNavbar',
+      'Color Navbar Gradiente': 'colorNavbarGradiente',
+      'Color Navbar Gradiente 1': 'colorNavbarGradiente1',
+      'Color Navbar Gradiente 2': 'colorNavbarGradiente2',
+      'Color Footer': 'colorFooter',
+      'Color Footer Gradiente': 'colorFooterGradiente',
+      'Color Footer Gradiente 1': 'colorFooterGradiente1',
+      'Color Footer Gradiente 2': 'colorFooterGradiente2',
+      'Color Texto Navbar': 'colorTextoNavbar',
+      'Color Texto Footer': 'colorTextoFooter'
+    };
+
+    // Convertir claves del Excel a nombres internos
+    const configConvertido = {};
+    for (const [claveExcel, valor] of Object.entries(config)) {
+      const claveInterna = mapeoClaves[claveExcel] || claveExcel;
+      configConvertido[claveInterna] = valor;
+    }
+
+    // Configuración por defecto si faltan campos
+    const configCompleta = {
+      nombreEmpresa: configConvertido.nombreEmpresa || 'ALNORTEGROW',
+      logoUrl: configConvertido.logoUrl || '',
+      textoFooter: configConvertido.textoFooter || 'www.alnortegrow.com.ar',
+      numeroWhatsapp: configConvertido.numeroWhatsapp || '',
+      colorNavbar: configConvertido.colorNavbar || '#fbbf24',
+      colorNavbarGradiente: configConvertido.colorNavbarGradiente === 'true' || configConvertido.colorNavbarGradiente === true || false,
+      colorNavbarGradiente1: configConvertido.colorNavbarGradiente1 || '#fbbf24',
+      colorNavbarGradiente2: configConvertido.colorNavbarGradiente2 || '#f59e0b',
+      colorFooter: configConvertido.colorFooter || '#1e293b',
+      colorFooterGradiente: configConvertido.colorFooterGradiente === 'true' || configConvertido.colorFooterGradiente === true || false,
+      colorFooterGradiente1: configConvertido.colorFooterGradiente1 || '#1e293b',
+      colorFooterGradiente2: configConvertido.colorFooterGradiente2 || '#334155',
+      colorTextoNavbar: configConvertido.colorTextoNavbar || '#1e293b',
+      colorTextoFooter: configConvertido.colorTextoFooter || '#ffffff'
+    };
+
+    res.json(configCompleta);
+  } catch (error) {
+    console.error('Error en /api/configuracion:', error);
+    res.status(500).json({ error: 'Error al obtener configuración' });
+  }
+});
+
+// Actualizar configuración del catálogo (solo administradores)
+app.put('/api/configuracion', requireAuth, async (req, res) => {
+  try {
+    if (req.rol !== 'Administrador') {
+      return res.status(403).json({ error: 'Solo los administradores pueden modificar la configuración' });
+    }
+
+    const {
+      nombreEmpresa,
+      logoUrl,
+      textoFooter,
+      numeroWhatsapp,
+      colorNavbar,
+      colorNavbarGradiente,
+      colorNavbarGradiente1,
+      colorNavbarGradiente2,
+      colorFooter,
+      colorFooterGradiente,
+      colorFooterGradiente1,
+      colorFooterGradiente2,
+      colorTextoNavbar,
+      colorTextoFooter
+    } = req.body;
+
+    // Validar campos requeridos
+    if (!nombreEmpresa) {
+      return res.status(400).json({ error: 'El nombre de la empresa es requerido' });
+    }
+
+    // Crear o actualizar la hoja de configuración
+    const CONFIG_RANGE = 'Configuracion!A:B';
+    
+    // Verificar si la hoja existe
+    try {
+      await sheets.spreadsheets.values.get({
+        spreadsheetId: SPREADSHEET_ID,
+        range: CONFIG_RANGE,
+      });
+    } catch (error) {
+      // Si la hoja no existe, crearla
+      const sheetsMeta = await sheets.spreadsheets.get({ spreadsheetId: SPREADSHEET_ID });
+      const existingSheets = sheetsMeta.data.sheets.map(s => s.properties.title);
+      
+      if (!existingSheets.includes('Configuracion')) {
+        await sheets.spreadsheets.batchUpdate({
+          spreadsheetId: SPREADSHEET_ID,
+          requestBody: {
+            requests: [{
+              addSheet: {
+                properties: {
+                  title: 'Configuracion',
+                  gridProperties: {
+                    rowCount: 20,
+                    columnCount: 2
+                  }
+                }
+              }
+            }]
+          }
+        });
+      }
+    }
+
+    // Preparar datos para actualizar con nombres de claves del Excel
+    const configData = [
+      ['Clave', 'Valor'],
+      ['Nombre Empresa', nombreEmpresa || 'ALNORTEGROW'],
+      ['Logo URL', logoUrl || ''],
+      ['Texto Footer', textoFooter || 'www.alnortegrow.com.ar'],
+      ['Numero Whatsapp', numeroWhatsapp || ''],
+      ['Color Navbar', colorNavbar || '#fbbf24'],
+      ['Color Navbar Gradiente', String(colorNavbarGradiente || false)],
+      ['Color Navbar Gradiente 1', colorNavbarGradiente1 || '#fbbf24'],
+      ['Color Navbar Gradiente 2', colorNavbarGradiente2 || '#f59e0b'],
+      ['Color Footer', colorFooter || '#1e293b'],
+      ['Color Footer Gradiente', String(colorFooterGradiente || false)],
+      ['Color Footer Gradiente 1', colorFooterGradiente1 || '#1e293b'],
+      ['Color Footer Gradiente 2', colorFooterGradiente2 || '#334155'],
+      ['Color Texto Navbar', colorTextoNavbar || '#1e293b'],
+      ['Color Texto Footer', colorTextoFooter || '#ffffff']
+    ];
+
+    // Actualizar la hoja de configuración
+    await sheets.spreadsheets.values.update({
+      spreadsheetId: SPREADSHEET_ID,
+      range: CONFIG_RANGE,
+      valueInputOption: 'RAW',
+      requestBody: { values: configData }
+    });
+
+    res.json({ 
+      success: true, 
+      message: 'Configuración actualizada correctamente',
+      config: {
+        nombreEmpresa,
+        logoUrl,
+        textoFooter,
+        numeroWhatsapp,
+        colorNavbar,
+        colorNavbarGradiente,
+        colorNavbarGradiente1,
+        colorNavbarGradiente2,
+        colorFooter,
+        colorFooterGradiente,
+        colorFooterGradiente1,
+        colorFooterGradiente2,
+        colorTextoNavbar,
+        colorTextoFooter
+      }
+    });
+  } catch (error) {
+    console.error('Error al actualizar configuración:', error);
+    res.status(500).json({ error: 'Error al actualizar configuración' });
+  }
+});
+
+// Error handling middleware mejorado
+
 // 404 handler
 app.use('*', (req, res) => {
   res.status(404).json({ error: 'Endpoint no encontrado' });
@@ -2242,6 +2467,8 @@ app.listen(PORT, () => {
   console.log(`🚀 Servidor iniciado en puerto ${PORT}`);
   console.log(`📊 API disponible en http://localhost:${PORT}/api`);
   console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
+}).on('error', (error) => {
+  console.error('❌ Error al iniciar servidor:', error);
 });
 
 module.exports = app;
